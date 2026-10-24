@@ -1,0 +1,32 @@
+// The 3.2" 320x240 screen that sits on the Pi's pins ("3.2inch TFT For RPi 2/B+/B V4.2",
+// a copy of the Waveshare 3.2" (B)). Display: ILI9340 on SPI0 CE0. Touch: XPT2046 on CE1 (unused).
+// Pins: DC = GPIO22, RESET = GPIO27, touch IRQ = GPIO17.
+/dts-v1/;
+/plugin/;
+
+&gpio {
+	minipi_lcd_pins: minipi-lcd-pins {
+		brcm,pins = <17 22 27>;
+		brcm,function = <0 1 1>;	/* 17 in, 22 and 27 out */
+	};
+};
+
+&spi {
+	status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&spi0_gpio7 &minipi_lcd_pins>;
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	display@0 {
+		compatible = "ilitek,ili9340";
+		reg = <0>;
+		spi-max-frequency = <32000000>;
+		rotate = <270>;
+		bgr;
+		fps = <25>;
+		buswidth = <8>;
+		dc-gpios = <&gpio 22 0>;	/* active high */
+		reset-gpios = <&gpio 27 1>;	/* active low */
+	};
+};
