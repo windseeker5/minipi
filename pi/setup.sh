@@ -42,6 +42,12 @@ if [[ ! -L /etc/resolv.conf ]]; then
     systemctl enable --now systemd-resolved
     ln -sf /run/systemd/resolve/resolv.conf /etc/resolv.conf
 fi
+# Answer to "minipi.local" on the cable too (Wi-Fi does already), whatever the address.
+for net in en eth; do
+    install -d "/etc/systemd/network/${net}.network.d"
+    printf '[Network]\nMulticastDNS=yes\n' > "/etc/systemd/network/${net}.network.d/mdns.conf"
+done
+networkctl reload
 print_success "Time: $(date '+%Y-%m-%d %H:%M %Z')"
 
 # ── Step 3: Language ─────────────────────────────────────────────────────────

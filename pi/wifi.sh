@@ -13,8 +13,11 @@ print_error()  { printf "${RED}${BOLD}[✗]${NC} %s\n" "$1" >&2; exit 1; }
 
 WLAN="wlan0"
 CONF="/etc/wpa_supplicant/wpa_supplicant-${WLAN}.conf"
-# Same file flash.sh writes. The higher metric means: the cable wins while it's plugged in.
+# Same files as flash.sh. The higher metric means: the cable wins while it's plugged in.
+# MulticastDNS answers to "minipi.local", whatever the address.
 NETWORK="/etc/systemd/network/25-wlan.network"
+# Wi-Fi power saving makes the Pi slow to answer SSH: off at every start.
+POWER_RULE="/etc/udev/rules.d/70-wifi-power-save.rules"
 
 # ── Step 1: Checks ───────────────────────────────────────────────────────────
 print_step "Checking"
@@ -51,6 +54,7 @@ Name=${WLAN}
 [Network]
 DHCP=yes
 DNSSEC=no
+MulticastDNS=yes
 
 [DHCPv4]
 RouteMetric=2048
@@ -58,6 +62,8 @@ RouteMetric=2048
 [IPv6AcceptRA]
 RouteMetric=2048
 EOF
+echo "ACTION==\"add\", SUBSYSTEM==\"net\", KERNEL==\"${WLAN}\", RUN+=\"/usr/bin/iw dev ${WLAN} set power_save off\"" > "$POWER_RULE"
+iw dev "$WLAN" set power_save off || true
 systemctl enable -q "wpa_supplicant@${WLAN}.service"
 systemctl restart "wpa_supplicant@${WLAN}.service"
 networkctl reload
@@ -79,5 +85,5 @@ fi
 print_success "On Wi-Fi at $IP"
 
 printf "\n${GREEN}${BOLD}Wi-Fi is on!${NC}\n\n"
-printf "Unplug the cable whenever you like. Then log in with:  ssh minipi   (or:  ssh %s@%s)\n" "${SUDO_USER:-$USER}" "$IP"
+printf "Unplug the cable whenever you like. Then log in with:  ssh minipi.local   (or:  ssh %s@%s)\n" "${SUDO_USER:-$USER}" "$IP"
 printf "The little screen shows the Wi-Fi address within a minute of unplugging.\n\n"

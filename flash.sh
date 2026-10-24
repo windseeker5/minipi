@@ -191,6 +191,7 @@ chown -R 0:0 "${ROOT_MNT}/root/.ssh"
 print_success "Hostname ${HOSTNAME_PI}, timezone ${TZ_NAME:-UTC}, key from ${REAL_USER}"
 
 # Same files as pi/wifi.sh. The higher metric means: a cable wins while it's plugged in.
+# MulticastDNS answers to "minipi.local"; Wi-Fi power saving would make SSH slow.
 if [[ -n "$PSK_BLOCK" ]]; then
     (umask 077; printf 'ctrl_interface=/run/wpa_supplicant\nupdate_config=1\ncountry=%s\n%s\n' "$COUNTRY" "$PSK_BLOCK" \
         > "${ROOT_MNT}/etc/wpa_supplicant/wpa_supplicant-wlan0.conf")
@@ -201,6 +202,7 @@ Name=wlan0
 [Network]
 DHCP=yes
 DNSSEC=no
+MulticastDNS=yes
 
 [DHCPv4]
 RouteMetric=2048
@@ -208,6 +210,8 @@ RouteMetric=2048
 [IPv6AcceptRA]
 RouteMetric=2048
 EOF
+    echo 'ACTION=="add", SUBSYSTEM=="net", KERNEL=="wlan0", RUN+="/usr/bin/iw dev wlan0 set power_save off"' \
+        > "${ROOT_MNT}/etc/udev/rules.d/70-wifi-power-save.rules"
     # What "systemctl enable wpa_supplicant@wlan0" would do on the Pi.
     ln -sf /usr/lib/systemd/system/wpa_supplicant@.service \
         "${ROOT_MNT}/etc/systemd/system/multi-user.target.wants/wpa_supplicant@wlan0.service"

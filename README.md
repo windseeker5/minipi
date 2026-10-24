@@ -66,7 +66,8 @@ Settings (all optional) are at the end of `mptool/config.example.toml`.
 | Check the sites now | `ssh minipi mptool monitor` |
 | Get the newest mptool from GitHub | `ssh minipi '~/minipi/pi/update.sh'` |
 
-If `ssh minipi` doesn't work, use the Pi's address (install.sh shows it), e.g. `ssh 192.168.1.50`.
+If `ssh minipi` doesn't work (it can lag a day after switching to Wi-Fi), use `ssh minipi.local`,
+or the address on the little screen, e.g. `ssh 192.168.1.50`.
 
 ## What's in here
 
