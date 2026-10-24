@@ -1,0 +1,11 @@
+[Unit]
+Description=Run the Minipass backup every night at 3:00
+
+[Timer]
+OnCalendar=*-*-* 03:00:00
+# If the computer was off at 3:00, run as soon as it is back on.
+Persistent=true
+RandomizedDelaySec=5min
+
+[Install]
+WantedBy=timers.target

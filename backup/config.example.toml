@@ -1,0 +1,18 @@
+# Copy to ~/.config/mpbackup/config.toml and fill in.
+# This file is an example only. The real config holds secrets and never goes into git.
+
+server = "kdresdell@minipass.me"
+port = 2222
+remote_base = "/home/kdresdell/minipass_env"
+
+# Where the nightly folders go. On the Raspberry Pi: the SSD mount, e.g. "/mnt/ssd/minipass".
+backup_root = "~/backups/minipass"
+
+# Discord channel webhook (Server settings > Integrations > Webhooks). Empty = no Discord alert.
+discord_webhook = ""
+
+# Also post a short "backup OK" every morning. If that message is missing, the backup did not run.
+discord_daily_ok = true
+
+# Customers the "Restore a customer" menu is allowed to touch.
+restore_allowed = ["demo"]

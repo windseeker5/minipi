@@ -1,0 +1,9 @@
+[Unit]
+Description=Minipass nightly backup (pulls from the VPS, read-only)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/mpbackup run
+Nice=10
