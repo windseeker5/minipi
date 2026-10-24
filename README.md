@@ -54,11 +54,20 @@ If `ssh minipi` doesn't work, use the Pi's address (install.sh shows it), e.g. `
 | `pi/setup.sh` | Pi | Updates Arch, creates your user, installs the tool |
 | `pi/update.sh` | Pi | Pulls the latest tool from GitHub and rebuilds it |
 | `pi/add-drive.sh` | Pi | Prepares the big drive and starts the nightly backup |
+| `pi/screen.sh` | Pi | Turns on the 3.2" screen on the pins (then restart) |
 | `backup/` | | The backup tool (Rust) |
 
 Secrets (the Discord link, server keys) never go in this repo. They live only in
 `~/.config/mpbackup/config.toml` on the laptop and on the Pi.
 
-## Later
+## The little screen
 
-The LCD screen: a logo animation and the backup status.
+The 3.2" 320x240 screen on the pins (a Waveshare 3.2" (B) copy) needs one extra step:
+
+```bash
+ssh -t minipi 'sudo ~/minipi/pi/screen.sh && sudo reboot'
+```
+
+It then shows up on the Pi as `/dev/fb1`. Touch is not used.
+
+Next: a logo animation and the backup status on it.
