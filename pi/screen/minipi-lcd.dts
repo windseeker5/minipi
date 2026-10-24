@@ -5,16 +5,22 @@
 /plugin/;
 
 &gpio {
+	minipi_spi_pins: minipi-spi-pins {
+		brcm,pins = <9 10 11>;
+		brcm,function = <4>;		/* MISO, MOSI, SCLK on SPI0 */
+	};
 	minipi_lcd_pins: minipi-lcd-pins {
-		brcm,pins = <17 22 27>;
-		brcm,function = <0 1 1>;	/* 17 in, 22 and 27 out */
+		brcm,pins = <7 8 17 22 27>;
+		brcm,function = <1 1 0 1 1>;	/* 17 in, the rest out */
 	};
 };
 
 &spi {
 	status = "okay";
 	pinctrl-names = "default";
-	pinctrl-0 = <&spi0_gpio7 &minipi_lcd_pins>;
+	pinctrl-0 = <&minipi_spi_pins &minipi_lcd_pins>;
+	/* Chip selects as plain GPIOs: the mainline driver can't take the native ones (-EPROBE_DEFER). */
+	cs-gpios = <&gpio 8 1>, <&gpio 7 1>;
 	#address-cells = <1>;
 	#size-cells = <0>;
 
