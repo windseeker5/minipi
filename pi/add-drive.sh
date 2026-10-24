@@ -62,9 +62,10 @@ else
         [[ "$CONFIRM" == "yes" ]] || { printf "Stopped, nothing changed.\n"; exit 0; }
         print_step "Erasing and formatting $DISK (a minute or two)"
         umount "${DISK}"?* 2>/dev/null || true
+        for p in $(lsblk -lnpo NAME "$DISK" | tail -n +2); do wipefs -aq "$p"; done
         wipefs -aq "$DISK"
-        parted -s "$DISK" mklabel gpt mkpart "$LABEL" ext4 1MiB 100%
-        partprobe "$DISK" 2>/dev/null || true
+        # One Linux partition filling the drive (sfdisk is built into Arch, parted is not).
+        printf 'label: gpt\ntype=L, name=%s\n' "$LABEL" | sfdisk -q "$DISK"
         udevadm settle
         PART="$(lsblk -pnlo NAME,TYPE "$DISK" | awk '$2 == "part" { print $1; exit }')"
         [[ -n "$PART" ]] || print_error "The new partition did not show up."
