@@ -105,8 +105,17 @@ read -r CONFIRM
 
 # ── Step 4: Partition and format ─────────────────────────────────────────────
 print_step "Partitioning and formatting $DEVICE"
-umount "${DEVICE}"?* 2>/dev/null || true
-umount "${DEVICE}p"?* 2>/dev/null || true
+# Unmount every partition on the card (the desktop may have mounted some by itself).
+unmount_card() {
+    local p
+    for p in $(lsblk -lnpo NAME "$DEVICE" | tail -n +2); do
+        while findmnt -S "$p" &>/dev/null; do umount "$p"; done
+    done
+}
+unmount_card
+# Erase the old partitions' signatures first: the new partitions land in the same
+# spots, and the desktop would otherwise find the old files there and mount them.
+for p in $(lsblk -lnpo NAME "$DEVICE" | tail -n +2); do wipefs -aq "$p"; done
 wipefs -aq "$DEVICE"
 parted -s "$DEVICE" mklabel msdos
 parted -s "$DEVICE" mkpart primary fat32 1MiB 513MiB
@@ -114,6 +123,7 @@ parted -s "$DEVICE" mkpart primary ext4 513MiB 100%
 parted -s "$DEVICE" set 1 boot on
 partprobe "$DEVICE" 2>/dev/null || true
 udevadm settle 2>/dev/null || sleep 2
+unmount_card
 
 if [[ "$DEVICE" == *[0-9] ]]; then   # mmcblk0, nvme0n1 → partitions get a "p"
     PART1="${DEVICE}p1"; PART2="${DEVICE}p2"
@@ -122,6 +132,8 @@ else
 fi
 mkfs.fat -F32 -n BOOT "$PART1" >/dev/null
 mkfs.ext4 -qF -L minipi-root "$PART2"
+udevadm settle 2>/dev/null || sleep 2
+unmount_card
 print_success "Formatted"
 
 # ── Step 5: Copy Arch onto the card ──────────────────────────────────────────
@@ -166,6 +178,7 @@ print_step "Writing everything to the card (please wait)"
 sync
 umount "$BOOT_MNT"
 umount "$ROOT_MNT"
+unmount_card
 print_success "Done, you can remove the card"
 
 printf "\n${GREEN}${BOLD}SD card ready!${NC}\n\n"
