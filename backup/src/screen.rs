@@ -10,7 +10,7 @@ use anyhow::{bail, Context, Result};
 use chrono::Local;
 use embedded_graphics::pixelcolor::{IntoStorage, Rgb565};
 use embedded_graphics::prelude::*;
-use embedded_graphics::primitives::{Circle, Line, PrimitiveStyle, Rectangle};
+use embedded_graphics::primitives::{Circle, Line, PrimitiveStyle};
 use std::convert::Infallible;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -36,11 +36,9 @@ const BAD_BG: Rgb565 = rgb(70, 18, 30);
 const FG: Rgb565 = rgb(192, 202, 245);
 const DIM: Rgb565 = rgb(86, 95, 137);
 const LINE: Rgb565 = rgb(59, 66, 97);
-const ACC: Rgb565 = rgb(122, 162, 247);
 const OK: Rgb565 = rgb(158, 206, 106);
 const BAD: Rgb565 = rgb(247, 118, 142);
 const WARN: Rgb565 = rgb(224, 175, 104);
-const DARK: Rgb565 = rgb(22, 22, 30);
 
 const fn rgb(r: u8, g: u8, b: u8) -> Rgb565 {
     Rgb565::new(r >> 3, g >> 2, b >> 3)
@@ -91,45 +89,41 @@ fn draw_status(cfg: &Config, f: &mut Frame) -> bool {
     // Header: title and clock (the clock shows the screen is alive).
     let small = FontRenderer::new::<fonts::u8g2_font_helvR10_tf>().with_ignore_unknown_chars(true);
     let body = FontRenderer::new::<fonts::u8g2_font_helvR12_tf>().with_ignore_unknown_chars(true);
-    let bold = FontRenderer::new::<fonts::u8g2_font_helvB12_tf>().with_ignore_unknown_chars(true);
     let big = FontRenderer::new::<fonts::u8g2_font_helvB18_tf>().with_ignore_unknown_chars(true);
-    text(f, &bold, "MINIPASS BACKUP", 10, 8, ACC, HorizontalAlignment::Left);
-    text(f, &body, &Local::now().format("%a %H:%M").to_string(), w - 10, 8, DIM, HorizontalAlignment::Right);
-    hline(f, 30, LINE);
+    text(f, &small, "MINIPASS BACKUP", 14, 10, DIM, HorizontalAlignment::Left);
+    text(f, &small, &Local::now().format("%a %H:%M").to_string(), w - 14, 10, DIM, HorizontalAlignment::Right);
 
-    // Banner: the one thing to know.
+    // The one thing to know: a dot and a word, in the status color.
     let (color, title, line) = match &health {
         Health::Ok => {
             let s = st.as_ref().unwrap();
-            (OK, "Backup OK".to_string(), format!("{}  ·  {}", when(last_time(s)), human(s.size_bytes)))
+            (OK, "Backup OK", format!("{}  ·  {}", when(last_time(s)), human(s.size_bytes)))
         }
-        Health::Warn(msg) => (WARN, "Waiting".to_string(), msg.clone()),
-        Health::Bad(msg) => (BAD, "BACKUP PROBLEM".to_string(), msg.clone()),
+        Health::Warn(msg) => (WARN, "Waiting", msg.clone()),
+        Health::Bad(msg) => (BAD, "Backup problem", msg.clone()),
     };
-    Rectangle::new(Point::new(0, 36), Size::new(f.w, 36))
-        .into_styled(PrimitiveStyle::with_fill(color))
+    dot(f, 14, 40, 14, color);
+    text(f, &big, title, 38, 36, color, HorizontalAlignment::Left);
+    text(f, &body, &clip(&line, 36), 38, 62, DIM, HorizontalAlignment::Left);
+    Line::new(Point::new(14, 90), Point::new(w - 14, 90))
+        .into_styled(PrimitiveStyle::with_stroke(LINE, 1))
         .draw(f)
         .ok();
-    text(f, &big, &title, w / 2, 44, DARK, HorizontalAlignment::Center);
-    text(f, &body, &clip(&line, 40), w / 2, 80, FG, HorizontalAlignment::Center);
 
     // One row per customer.
     if let Some(s) = &st {
-        let mut y = 104;
+        let mut y = 100;
         let shown = if s.customers.len() > MAX_ROWS { MAX_ROWS - 1 } else { s.customers.len() };
         for c in &s.customers[..shown] {
             let step = s.steps.iter().find(|x| x.name == format!("Customer {c}: photos and settings"));
-            let (dot, detail) = match step {
+            let (state, detail) = match step {
                 Some(x) if x.ok => (OK, x.detail.clone()),
                 Some(_) => (BAD, "failed".to_string()),
                 None => (DIM, "not backed up".to_string()),
             };
-            Circle::new(Point::new(12, y + 2), 10)
-                .into_styled(PrimitiveStyle::with_fill(dot))
-                .draw(f)
-                .ok();
-            text(f, &bold, c, 30, y, FG, HorizontalAlignment::Left);
-            text(f, &body, &detail, w - 10, y, if dot == BAD { BAD } else { DIM }, HorizontalAlignment::Right);
+            dot(f, 16, y + 4, 8, state);
+            text(f, &body, c, 38, y, FG, HorizontalAlignment::Left);
+            text(f, &body, &detail, w - 14, y, if state == BAD { BAD } else { DIM }, HorizontalAlignment::Right);
             y += 20;
         }
         if shown < s.customers.len() {
@@ -143,10 +137,10 @@ fn draw_status(cfg: &Config, f: &mut Frame) -> bool {
     let next = next_run()
         .map(|n| format!("Next {}", when(&n.format("%Y-%m-%d %H:%M:%S").to_string())))
         .unwrap_or_else(|| "Timer off".into());
-    text(f, &small, &next, 10, 218, DIM, HorizontalAlignment::Left);
+    text(f, &small, &next, 14, 218, DIM, HorizontalAlignment::Left);
     if let Some((pct, free)) = drive_use(&cfg.root()) {
         let drive = format!("Drive {pct}%  ·  {} free", human(free));
-        text(f, &small, &drive, w - 10, 218, if pct >= 90 { WARN } else { DIM }, HorizontalAlignment::Right);
+        text(f, &small, &drive, w - 14, 218, if pct >= 90 { WARN } else { DIM }, HorizontalAlignment::Right);
     }
 
     matches!(health, Health::Ok)
@@ -183,8 +177,12 @@ fn text(f: &mut Frame, font: &FontRenderer, s: &str, x: i32, y: i32, color: Rgb5
         .ok();
 }
 
+fn dot(f: &mut Frame, x: i32, y: i32, size: u32, color: Rgb565) {
+    Circle::new(Point::new(x, y), size).into_styled(PrimitiveStyle::with_fill(color)).draw(f).ok();
+}
+
 fn hline(f: &mut Frame, y: i32, color: Rgb565) {
-    Line::new(Point::new(0, y), Point::new(f.w as i32 - 1, y))
+    Line::new(Point::new(14, y), Point::new(f.w as i32 - 15, y))
         .into_styled(PrimitiveStyle::with_stroke(color, 1))
         .draw(f)
         .ok();
