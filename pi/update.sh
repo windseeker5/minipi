@@ -12,6 +12,11 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 git -C "$REPO" pull -q --ff-only || print_error "Could not pull from GitHub (local changes in $REPO?)"
 print_success "Code up to date ($(git -C "$REPO" log -1 --format='%h %s'))"
+# The terminal configs are links into the dotfiles (pi/terminal.sh): this updates them.
+if [[ -d "$HOME/.dotfiles/.git" ]]; then
+    git -C "$HOME/.dotfiles" pull -q --ff-only && print_success "Dotfiles up to date" \
+        || printf "Could not update ~/.dotfiles (local changes?), skipped\n"
+fi
 
 # Building with all 4 cores can run a 2 GB Pi out of memory.
 MEM_KB="$(awk '/MemTotal/ {print $2}' /proc/meminfo)"

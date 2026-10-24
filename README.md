@@ -27,8 +27,9 @@ It asks for your Wi-Fi name and password. Leave the name empty to use a network 
 ```
 
 It asks for a username and a password for the Pi, then does the rest:
-updates Arch, builds mptool, copies your settings
-(`~/.config/mptool/config.toml`) and lets the Pi log in to the Minipass server.
+updates Arch, builds mptool, sets up your terminal from your
+[dotfiles](https://github.com/windseeker5/dotfiles) (zsh, Neovim, lazygit, fzf, nnn; no desktop),
+copies your settings (`~/.config/mptool/config.toml`) and lets the Pi log in to the Minipass server.
 
 **4. Add the big drive** (plug it into the Pi, with its own power if it has a plug):
 
@@ -80,6 +81,7 @@ or the address on the little screen, e.g. `ssh 192.168.1.50`.
 | `pi/add-drive.sh` | Pi | Prepares the big drive and starts the nightly backup |
 | `pi/screen.sh` | Pi | Turns on the 3.2" screen on the pins (then restart) |
 | `pi/wifi.sh` | Pi | Puts the Pi on Wi-Fi, or changes the network |
+| `pi/terminal.sh` | Pi | Your terminal from the dotfiles: zsh, Neovim, lazygit, fzf, nnn... |
 | `mptool/` | | The Minipass tool (Rust): backup, monitoring, screen |
 
 Secrets (the Discord link, server keys) never go in this repo. They live only in

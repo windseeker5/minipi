@@ -115,6 +115,10 @@ if [[ ! -f "$CONFIG" ]]; then
 fi
 print_success "mptool installed (the nightly timer starts once the big drive is added)"
 
+# ── Your terminal ────────────────────────────────────────────────────────────
+# zsh, Neovim and the command-line tools, set up from your dotfiles.
+bash "${USER_HOME}/minipi/pi/terminal.sh" "$NEW_USER"
+
 # ── Step 7: Close the default doors ──────────────────────────────────────────
 # Arch ARM ships with alarm/alarm and root/root, known to everyone.
 print_step "Locking the default accounts"
