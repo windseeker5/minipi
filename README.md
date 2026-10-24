@@ -78,6 +78,9 @@ The 3.2" 320x240 screen on the pins (a Waveshare 3.2" (B) copy) needs one extra 
 ssh -t minipi 'sudo ~/minipi/pi/screen.sh && sudo reboot'
 ```
 
-It then shows the Minipass logo and the status in turn, 10 seconds each: the overall state,
-then one row per customer with its last backup and its login page response time.
-When something is wrong the status stays up, on red. Touch is not used.
+It then loops: the Minipass logo opens out from the middle and "minipass management tool"
+types itself (5 seconds), then the customers go by 5 per page, 10 seconds a page.
+The top line has the Pi's address (to SSH in) and the clock. Each row: a green, yellow or red
+icon, the subdomain, last night's files and backup size, and the login page time.
+Broken customers come first, with the broken value in red. The bottom bar shows how much
+of the backup drive the backups use. Touch is not used.

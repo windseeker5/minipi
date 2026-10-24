@@ -7,12 +7,11 @@ description = "Nightly pull backup of the Minipass VPS"
 [dependencies]
 anyhow = "1"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
-embedded-graphics = "0.8"
+fontdue = "0.9"
 ratatui = "0.30"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 toml = "0.8"
-u8g2-fonts = "0.8"
 
 [profile.release]
 strip = true
