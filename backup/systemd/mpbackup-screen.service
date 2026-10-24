@@ -1,0 +1,10 @@
+[Unit]
+Description=Minipass backup status on the Pi's little screen
+
+[Service]
+ExecStart=%h/.local/bin/mpbackup screen
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target

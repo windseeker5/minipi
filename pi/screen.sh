@@ -67,10 +67,14 @@ EOF
 "$HELPER"
 print_success "Boot files updated (kept after kernel updates)"
 
-# ── Step 5: Let your user draw on the screen ─────────────────────────────────
+# ── Step 5: Show the backup status on it ─────────────────────────────────────
 if [[ -n "$OWNER" && "$OWNER" != "root" ]]; then
+    print_step "Showing the backup status on the screen"
     usermod -aG video "$OWNER"
-    print_success "'$OWNER' can draw on the screen"
+    # Starts with the Pi; until the restart the screen isn't there yet, so it just retries.
+    systemctl --user -M "${OWNER}@" daemon-reload
+    systemctl --user -M "${OWNER}@" enable mpbackup-screen.service
+    print_success "Logo and backup status will show after the restart"
 fi
 
 printf "\n${GREEN}${BOLD}Screen set up.${NC} Restart to turn it on:  sudo reboot\n"

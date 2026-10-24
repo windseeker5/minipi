@@ -687,7 +687,7 @@ fn key_hints(list: &[(&str, &str)]) -> Line<'static> {
 }
 
 /// When the nightly timer fires next, as systemd reports it ("Mon 2026-10-19 03:04:37 EDT").
-fn next_run() -> Option<NaiveDateTime> {
+pub(crate) fn next_run() -> Option<NaiveDateTime> {
     let out = Command::new("systemctl")
         .args(["--user", "show", "mpbackup.timer", "--property=NextElapseUSecRealtime", "--value"])
         .output()
@@ -703,7 +703,7 @@ fn parse(ts: &str) -> Option<NaiveDateTime> {
 }
 
 /// "today 03:04", "yesterday 03:04", "Oct 12 03:04".
-fn when(ts: &str) -> String {
+pub(crate) fn when(ts: &str) -> String {
     let Some(t) = parse(ts) else { return ts.to_string() };
     let today = Local::now().date_naive();
     let day = if t.date() == today {
@@ -716,6 +716,6 @@ fn when(ts: &str) -> String {
     format!("{day} {}", t.format("%H:%M"))
 }
 
-fn age_hours(ts: &str) -> Option<i64> {
+pub(crate) fn age_hours(ts: &str) -> Option<i64> {
     parse(ts).map(|t| (Local::now().naive_local() - t).num_hours())
 }

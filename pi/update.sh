@@ -21,7 +21,9 @@ JOBS=()
 cd "$REPO/backup"
 cargo build --release --locked "${JOBS[@]}"
 install -Dm755 target/release/mpbackup "$HOME/.local/bin/mpbackup"
-install -Dm644 -t "$HOME/.config/systemd/user" systemd/mpbackup.service systemd/mpbackup.timer
+install -Dm644 -t "$HOME/.config/systemd/user" systemd/*.service systemd/*.timer
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 systemctl --user daemon-reload 2>/dev/null || true
+# The screen keeps running the old program until restarted.
+systemctl --user try-restart mpbackup-screen.service 2>/dev/null || true
 print_success "mpbackup installed in ~/.local/bin"

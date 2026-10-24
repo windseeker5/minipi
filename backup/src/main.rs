@@ -5,6 +5,7 @@ mod notify;
 mod remote;
 mod retention;
 mod run;
+mod screen;
 mod status;
 mod unpack;
 
@@ -15,6 +16,7 @@ const USAGE: &str = "Usage:
   mpbackup               open the menu
   mpbackup run           run the backup now (the nightly timer calls this)
   mpbackup status        show the last backup and the nights on disk
+  mpbackup screen        show the logo and the status on the Pi's little screen
   mpbackup test-discord  send a test message to the Discord channel";
 
 fn main() -> ExitCode {
@@ -55,6 +57,13 @@ fn main() -> ExitCode {
             status::print(&cfg.root());
             ExitCode::SUCCESS
         }
+        Some("screen") => match screen::run(&cfg) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(e) => {
+                eprintln!("{e:#}");
+                ExitCode::FAILURE
+            }
+        },
         Some("test-discord") => match notify::send(&cfg, "Minipass backup: test message, alerts work.") {
             Ok(()) if cfg.discord_webhook.is_empty() => {
                 eprintln!("No discord_webhook in the config.");
