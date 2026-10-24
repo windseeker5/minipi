@@ -16,7 +16,9 @@ All commands run on the laptop, from this folder.
 sudo ./flash.sh
 ```
 
-**2. Start the Pi.** Put the card in, plug in the network cable, then the power. Wait a minute.
+It asks for your Wi-Fi name and password. Leave the name empty to use a network cable instead.
+
+**2. Start the Pi.** Put the card in (and the network cable, if no Wi-Fi), then the power. Wait a minute.
 
 **3. Set it up** (finds the Pi by itself, takes 20 to 40 minutes):
 
@@ -35,6 +37,17 @@ ssh -t minipi sudo ~/minipi/pi/add-drive.sh
 ```
 
 Done: a backup runs every night at 3:00, and Discord tells you how it went.
+
+## Wi-Fi
+
+To put a Pi that runs on the cable onto Wi-Fi, or to change the Wi-Fi network or password:
+
+```bash
+ssh -t minipi 'cd ~/minipi && git pull -q && sudo pi/wifi.sh'
+```
+
+Keep the cable plugged in while it runs. When it says Wi-Fi is on, unplug the cable.
+If both are plugged in, the cable is used; the little screen always shows the address in use.
 
 ## Site checks
 
@@ -65,6 +78,7 @@ If `ssh minipi` doesn't work, use the Pi's address (install.sh shows it), e.g. `
 | `pi/update.sh` | Pi | Pulls the latest tool from GitHub and rebuilds it |
 | `pi/add-drive.sh` | Pi | Prepares the big drive and starts the nightly backup |
 | `pi/screen.sh` | Pi | Turns on the 3.2" screen on the pins (then restart) |
+| `pi/wifi.sh` | Pi | Puts the Pi on Wi-Fi, or changes the network |
 | `mptool/` | | The Minipass tool (Rust): backup, monitoring, screen |
 
 Secrets (the Discord link, server keys) never go in this repo. They live only in

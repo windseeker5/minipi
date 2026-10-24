@@ -5,6 +5,7 @@
 # Besides the plain Arch install, the card comes out ready for install.sh:
 #   - hostname "minipi" and your laptop's timezone
 #   - your laptop's SSH key, so install.sh can log in with no password
+#   - your Wi-Fi, if you give it (or plug in a network cable instead)
 set -euo pipefail
 
 GREEN='\033[0;32m'; RED='\033[0;31m'; YELLOW='\033[1;33m'
@@ -36,12 +37,12 @@ print_step "Checking privileges and tools"
 [[ $EUID -eq 0 ]] || print_error "Run with sudo:  sudo ./flash.sh"
 
 MISSING=()
-for cmd in parted mkfs.fat mkfs.ext4 bsdtar wget md5sum blkid; do
+for cmd in parted mkfs.fat mkfs.ext4 bsdtar wget md5sum blkid wpa_passphrase; do
     command -v "$cmd" &>/dev/null || MISSING+=("$cmd")
 done
 if [[ ${#MISSING[@]} -gt 0 ]]; then
     printf "${RED}Missing commands:${NC} %s\n" "${MISSING[*]}"
-    printf "${YELLOW}Install on Arch:${NC} sudo pacman -S parted dosfstools e2fsprogs libarchive wget\n"
+    printf "${YELLOW}Install on Arch:${NC} sudo pacman -S parted dosfstools e2fsprogs libarchive wget wpa_supplicant\n"
     print_error "Install missing tools and re-run."
 fi
 
@@ -102,6 +103,22 @@ printf "\n${RED}${BOLD}EVERYTHING ON %s (%s %s) WILL BE ERASED.${NC}\n" "$DEVICE
 printf "${YELLOW}Type 'yes' to continue:${NC} "
 read -r CONFIRM
 [[ "$CONFIRM" == "yes" ]] || { printf "Stopped, nothing changed.\n"; exit 0; }
+
+# Asked now, so the long part after runs without you.
+printf "\n${YELLOW}Wi-Fi name for the Pi (empty = network cable only):${NC} "
+read -r SSID
+PSK_BLOCK=""
+if [[ -n "$SSID" ]]; then
+    printf "${YELLOW}Password (not shown):${NC} "
+    read -rs PASS
+    printf "\n"
+    printf "${YELLOW}Country code [CA]:${NC} "
+    read -r COUNTRY
+    COUNTRY="${COUNTRY:-CA}"
+    # wpa_passphrase stores the password scrambled (and refuses one under 8 letters).
+    PSK_BLOCK="$(wpa_passphrase "$SSID" "$PASS" | grep -v '^[[:space:]]*#psk=')" \
+        || print_error "Wi-Fi passwords are 8 to 63 characters. Nothing changed."
+fi
 
 # ── Step 4: Partition and format ─────────────────────────────────────────────
 print_step "Partitioning and formatting $DEVICE"
@@ -173,6 +190,30 @@ install -m 600 "$PUBKEY" "${ROOT_MNT}/root/.ssh/authorized_keys"
 chown -R 0:0 "${ROOT_MNT}/root/.ssh"
 print_success "Hostname ${HOSTNAME_PI}, timezone ${TZ_NAME:-UTC}, key from ${REAL_USER}"
 
+# Same files as pi/wifi.sh. The higher metric means: a cable wins while it's plugged in.
+if [[ -n "$PSK_BLOCK" ]]; then
+    (umask 077; printf 'ctrl_interface=/run/wpa_supplicant\nupdate_config=1\ncountry=%s\n%s\n' "$COUNTRY" "$PSK_BLOCK" \
+        > "${ROOT_MNT}/etc/wpa_supplicant/wpa_supplicant-wlan0.conf")
+    cat > "${ROOT_MNT}/etc/systemd/network/25-wlan.network" <<EOF
+[Match]
+Name=wlan0
+
+[Network]
+DHCP=yes
+DNSSEC=no
+
+[DHCPv4]
+RouteMetric=2048
+
+[IPv6AcceptRA]
+RouteMetric=2048
+EOF
+    # What "systemctl enable wpa_supplicant@wlan0" would do on the Pi.
+    ln -sf /usr/lib/systemd/system/wpa_supplicant@.service \
+        "${ROOT_MNT}/etc/systemd/system/multi-user.target.wants/wpa_supplicant@wlan0.service"
+    print_success "Wi-Fi \"${SSID}\" set"
+fi
+
 # ── Step 8: Finish ───────────────────────────────────────────────────────────
 print_step "Writing everything to the card (please wait)"
 sync
@@ -183,5 +224,9 @@ print_success "Done, you can remove the card"
 
 printf "\n${GREEN}${BOLD}SD card ready!${NC}\n\n"
 printf "${BOLD}Next:${NC}\n"
-printf "  1. Put the card in the Pi, plug in the network cable, then the power\n"
+if [[ -n "$PSK_BLOCK" ]]; then
+    printf "  1. Put the card in the Pi, then plug in the power (no cable needed)\n"
+else
+    printf "  1. Put the card in the Pi, plug in the network cable, then the power\n"
+fi
 printf "  2. Wait about a minute, then on this laptop run:  ./install.sh\n\n"
