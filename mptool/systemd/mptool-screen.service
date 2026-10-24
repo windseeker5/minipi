@@ -2,7 +2,7 @@
 Description=Minipass backup status on the Pi's little screen
 
 [Service]
-ExecStart=%h/.local/bin/mpbackup screen
+ExecStart=%h/.local/bin/mptool screen
 Restart=always
 RestartSec=10
 

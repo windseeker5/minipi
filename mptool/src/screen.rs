@@ -1,9 +1,11 @@
-//! The little 3.2" screen on the Pi (`mpbackup screen`): the Minipass logo and the
-//! backup status take turns. When something is wrong the status stays up, in red.
+//! The little 3.2" screen on the Pi (`mptool screen`): the Minipass logo and the
+//! status (backups and site checks) take turns. When something is wrong the status
+//! stays up, in red.
 //! Draws straight into the screen's framebuffer (/dev/fbN, 16-bit RGB565).
 
 use crate::config::Config;
 use crate::menu::{age_hours, next_run, when};
+use crate::monitor::{Monitor, Site};
 use crate::run::human;
 use crate::status::Status;
 use anyhow::{bail, Context, Result};
@@ -23,7 +25,7 @@ use u8g2_fonts::{fonts, FontRenderer};
 const TURN: Duration = Duration::from_secs(10);
 /// No finished backup for this long means a night was missed.
 const STALE_HOURS: i64 = 26;
-/// Customer rows that fit between the banner and the footer.
+/// Customer rows that fit between the status and the footer.
 const MAX_ROWS: usize = 5;
 
 /// The white logo centered on BG, 320x240, RGB565 little-endian. Made from
@@ -61,27 +63,44 @@ pub fn run(cfg: &Config) -> Result<()> {
 
 // ── What the screen says ─────────────────────────────────────────────────────
 
-enum Health {
-    Ok,
-    Warn(String),
-    Bad(String),
+/// The one thing to know, worst first: a color, a word and a line of detail.
+struct Health {
+    color: Rgb565,
+    title: String,
+    line: String,
+}
+
+fn health(st: &Option<Status>, mon: &Option<Monitor>) -> Health {
+    let h = |color, title: &str, line: String| Health { color, title: title.into(), line };
+    let down: Vec<&Site> = mon.iter().flat_map(|m| &m.sites).filter(|x| x.down()).collect();
+    match st {
+        Some(s) if !s.ok => {
+            let failed = s.failed_steps().first().map(|x| x.name.clone()).unwrap_or_default();
+            return h(BAD, "Backup problem", format!("Failed: {failed}"));
+        }
+        Some(s) if age_hours(last_time(s)).is_none_or(|h| h >= STALE_HOURS) => {
+            return h(BAD, "Backup problem", format!("No backup since {}", when(last_time(s))));
+        }
+        _ => {}
+    }
+    if let Some(first) = down.first() {
+        let title = if down.len() == 1 { "Site down".to_string() } else { format!("{} sites down", down.len()) };
+        return h(BAD, &title, format!("{}: {}", first.customer, first.problem));
+    }
+    let Some(s) = st else { return h(WARN, "Waiting", "No backup has run yet".into()) };
+    let checks_ok = mon.as_ref().and_then(|m| age_minutes(&m.checked)).is_some_and(|m| m < 15);
+    if !checks_ok {
+        return h(WARN, "Checks paused", "Site checks are not running".into());
+    }
+    h(OK, "All good", format!("Backup {}  ·  {}", when(last_time(s)), human(s.size_bytes)))
 }
 
 /// Draws the status card. Returns false when something needs attention.
 fn draw_status(cfg: &Config, f: &mut Frame) -> bool {
     let st = Status::read(&cfg.root().join("last-run.json"));
-    let health = match &st {
-        None => Health::Warn("No backup has run yet".into()),
-        Some(s) if !s.ok => {
-            let failed = s.failed_steps().first().map(|x| x.name.clone()).unwrap_or_default();
-            Health::Bad(format!("Failed: {failed}"))
-        }
-        Some(s) if age_hours(last_time(s)).is_none_or(|h| h >= STALE_HOURS) => {
-            Health::Bad(format!("No backup since {}", when(last_time(s))))
-        }
-        Some(_) => Health::Ok,
-    };
-    if matches!(health, Health::Bad(_)) {
+    let mon = Monitor::read();
+    let health = health(&st, &mon);
+    if health.color == BAD {
         f.fill(BAD_BG);
     }
     let w = f.w as i32;
@@ -90,60 +109,67 @@ fn draw_status(cfg: &Config, f: &mut Frame) -> bool {
     let small = FontRenderer::new::<fonts::u8g2_font_helvR10_tf>().with_ignore_unknown_chars(true);
     let body = FontRenderer::new::<fonts::u8g2_font_helvR12_tf>().with_ignore_unknown_chars(true);
     let big = FontRenderer::new::<fonts::u8g2_font_helvB18_tf>().with_ignore_unknown_chars(true);
-    text(f, &small, "MINIPASS BACKUP", 14, 10, DIM, HorizontalAlignment::Left);
+    text(f, &small, "MINIPASS", 14, 10, DIM, HorizontalAlignment::Left);
     text(f, &small, &Local::now().format("%a %H:%M").to_string(), w - 14, 10, DIM, HorizontalAlignment::Right);
 
     // The one thing to know: a dot and a word, in the status color.
-    let (color, title, line) = match &health {
-        Health::Ok => {
-            let s = st.as_ref().unwrap();
-            (OK, "Backup OK", format!("{}  ·  {}", when(last_time(s)), human(s.size_bytes)))
-        }
-        Health::Warn(msg) => (WARN, "Waiting", msg.clone()),
-        Health::Bad(msg) => (BAD, "Backup problem", msg.clone()),
-    };
-    dot(f, 14, 40, 14, color);
-    text(f, &big, title, 38, 36, color, HorizontalAlignment::Left);
-    text(f, &body, &clip(&line, 36), 38, 62, DIM, HorizontalAlignment::Left);
-    Line::new(Point::new(14, 90), Point::new(w - 14, 90))
-        .into_styled(PrimitiveStyle::with_stroke(LINE, 1))
-        .draw(f)
-        .ok();
+    dot(f, 14, 40, 14, health.color);
+    text(f, &big, &health.title, 38, 36, health.color, HorizontalAlignment::Left);
+    text(f, &body, &clip(&health.line, 36), 38, 62, DIM, HorizontalAlignment::Left);
+    hline(f, 86, LINE);
 
-    // One row per customer.
+    // One row per customer: last backup, and the login page right now.
     if let Some(s) = &st {
-        let mut y = 100;
+        text(f, &small, "backup", 196, 92, DIM, HorizontalAlignment::Right);
+        text(f, &small, "site", w - 14, 92, DIM, HorizontalAlignment::Right);
+        let mut y = 110;
         let shown = if s.customers.len() > MAX_ROWS { MAX_ROWS - 1 } else { s.customers.len() };
         for c in &s.customers[..shown] {
             let step = s.steps.iter().find(|x| x.name == format!("Customer {c}: photos and settings"));
             let (state, detail) = match step {
                 Some(x) if x.ok => (OK, x.detail.clone()),
                 Some(_) => (BAD, "failed".to_string()),
-                None => (DIM, "not backed up".to_string()),
+                None => (DIM, "missing".to_string()),
             };
             dot(f, 16, y + 4, 8, state);
             text(f, &body, c, 38, y, FG, HorizontalAlignment::Left);
-            text(f, &body, &detail, w - 14, y, if state == BAD { BAD } else { DIM }, HorizontalAlignment::Right);
-            y += 20;
+            text(f, &body, &detail, 196, y, if state == BAD { BAD } else { DIM }, HorizontalAlignment::Right);
+
+            let site = mon.as_ref().and_then(|m| m.sites.iter().find(|x| &x.customer == c));
+            let (state, detail) = match site {
+                Some(x) if x.down() => (BAD, "down".to_string()),
+                Some(x) if !x.problem.is_empty() || x.ms > cfg.monitor_slow_ms => (WARN, format!("{} ms", x.ms)),
+                Some(x) => (OK, format!("{} ms", x.ms)),
+                None => (DIM, "-".to_string()),
+            };
+            dot(f, 214, y + 4, 8, state);
+            let color = if state == OK { DIM } else { state };
+            text(f, &body, &detail, w - 14, y, color, HorizontalAlignment::Right);
+            y += 19;
         }
         if shown < s.customers.len() {
             let more = format!("+ {} more", s.customers.len() - shown);
-            text(f, &body, &more, 30, y, DIM, HorizontalAlignment::Left);
+            text(f, &body, &more, 38, y, DIM, HorizontalAlignment::Left);
         }
     }
 
-    // Footer: next run and room left on the drive.
+    // Footer: next backup and room left on the drive.
     hline(f, 208, LINE);
     let next = next_run()
-        .map(|n| format!("Next {}", when(&n.format("%Y-%m-%d %H:%M:%S").to_string())))
-        .unwrap_or_else(|| "Timer off".into());
+        .map(|n| format!("Next backup {}", when(&n.format("%Y-%m-%d %H:%M:%S").to_string())))
+        .unwrap_or_else(|| "Backup timer off".into());
     text(f, &small, &next, 14, 218, DIM, HorizontalAlignment::Left);
     if let Some((pct, free)) = drive_use(&cfg.root()) {
         let drive = format!("Drive {pct}%  ·  {} free", human(free));
         text(f, &small, &drive, w - 14, 218, if pct >= 90 { WARN } else { DIM }, HorizontalAlignment::Right);
     }
 
-    matches!(health, Health::Ok)
+    health.color == OK
+}
+
+fn age_minutes(ts: &str) -> Option<i64> {
+    let t = chrono::NaiveDateTime::parse_from_str(ts, "%Y-%m-%d %H:%M:%S").ok()?;
+    Some((Local::now().naive_local() - t).num_minutes())
 }
 
 /// When the last backup ended (or started, if it never finished).

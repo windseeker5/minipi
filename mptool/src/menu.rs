@@ -1,4 +1,4 @@
-//! The menu (`mpbackup` with no arguments): one dashboard screen, actions open in pop-ups.
+//! The menu (`mptool` with no arguments): one dashboard screen, actions open in pop-ups.
 //! Everything here only reads from the server. Restores come later and will be the only writers.
 
 use crate::compare::{self, Line as CmpLine};
@@ -689,7 +689,7 @@ fn key_hints(list: &[(&str, &str)]) -> Line<'static> {
 /// When the nightly timer fires next, as systemd reports it ("Mon 2026-10-19 03:04:37 EDT").
 pub(crate) fn next_run() -> Option<NaiveDateTime> {
     let out = Command::new("systemctl")
-        .args(["--user", "show", "mpbackup.timer", "--property=NextElapseUSecRealtime", "--value"])
+        .args(["--user", "show", "mptool-backup.timer", "--property=NextElapseUSecRealtime", "--value"])
         .output()
         .ok()?;
     let text = String::from_utf8_lossy(&out.stdout);

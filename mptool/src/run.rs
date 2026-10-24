@@ -28,7 +28,7 @@ pub const SERVER_FILES: &[(&str, &str)] = &[
     ("MinipassWebSite/.env", "website/.env"),
 ];
 
-/// What the backup reports while it works: printed by `mpbackup run`, drawn by the menu.
+/// What the backup reports while it works: printed by `mptool run`, drawn by the menu.
 pub enum Event {
     Log(String),
     /// How many steps this run will have, once the customers are known.
@@ -37,7 +37,7 @@ pub enum Event {
     Done(Step),
 }
 
-/// `mpbackup run` prints the events with a time in front.
+/// `mptool run` prints the events with a time in front.
 pub fn print_event(e: Event) {
     let msg = match e {
         Event::Log(m) => m,
@@ -276,7 +276,7 @@ fn copy_databases(remote: &Remote, work: &Path, customers: &[String]) -> Result<
     jobs.push(("email_monitoring/monitoring.db".into(), "website-monitoring.db".into()));
 
     let mut script = format!(
-        "set -e; cd {}; T=$(mktemp -d /tmp/mpbackup.XXXXXX); trap 'rm -rf \"$T\"' ERR; ",
+        "set -e; cd {}; T=$(mktemp -d /tmp/mptool.XXXXXX); trap 'rm -rf \"$T\"' ERR; ",
         remote.base
     );
     for (src, name) in &jobs {
@@ -284,7 +284,7 @@ fn copy_databases(remote: &Remote, work: &Path, customers: &[String]) -> Result<
     }
     script += "echo \"$T\"";
     let tmp = remote.run(&script)?.trim().to_string();
-    if !tmp.starts_with("/tmp/mpbackup.") {
+    if !tmp.starts_with("/tmp/mptool.") {
         bail!("unexpected temp folder: {tmp}");
     }
 

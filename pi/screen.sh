@@ -73,7 +73,7 @@ if [[ -n "$OWNER" && "$OWNER" != "root" ]]; then
     usermod -aG video "$OWNER"
     # Starts with the Pi; until the restart the screen isn't there yet, so it just retries.
     systemctl --user -M "${OWNER}@" daemon-reload
-    systemctl --user -M "${OWNER}@" enable mpbackup-screen.service
+    systemctl --user -M "${OWNER}@" enable mptool-screen.service
     print_success "Logo and backup status will show after the restart"
 fi
 

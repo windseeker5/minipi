@@ -1,5 +1,5 @@
 [package]
-name = "mpbackup"
+name = "mptool"
 version = "0.1.0"
 edition = "2021"
 description = "Nightly pull backup of the Minipass VPS"

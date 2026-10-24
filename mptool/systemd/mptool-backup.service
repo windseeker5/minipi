@@ -5,5 +5,5 @@ After=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=%h/.local/bin/mpbackup run
+ExecStart=%h/.local/bin/mptool run
 Nice=10

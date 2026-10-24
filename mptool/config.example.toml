@@ -1,4 +1,4 @@
-# Copy to ~/.config/mpbackup/config.toml and fill in.
+# Copy to ~/.config/mptool/config.toml and fill in.
 # This file is an example only. The real config holds secrets and never goes into git.
 
 server = "kdresdell@minipass.me"
@@ -16,3 +16,10 @@ discord_daily_ok = true
 
 # Customers the "Restore a customer" menu is allowed to touch.
 restore_allowed = ["demo"]
+
+# Site monitoring (mptool monitor, every 5 minutes on the Pi). These are the defaults.
+# monitor_url = "https://{customer}.minipass.me/login"
+# monitor_expect = "type=\"password\""
+# monitor_slow_ms = 3000
+# monitor_cert_days = 14
+# monitor_skip = []

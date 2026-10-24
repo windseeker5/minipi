@@ -1,0 +1,8 @@
+[Unit]
+Description=Minipass site checks (each customer's login page)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/mptool monitor

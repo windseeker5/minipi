@@ -101,12 +101,13 @@ if [[ ! -d "${USER_HOME}/minipi/.git" ]]; then
     sudo -u "$NEW_USER" git clone -q "$REPO_URL" "${USER_HOME}/minipi"
 fi
 sudo -u "$NEW_USER" -H bash "${USER_HOME}/minipi/pi/update.sh"
-ln -sf "${USER_HOME}/.local/bin/mpbackup" /usr/local/bin/mpbackup
-CONFIG="${USER_HOME}/.config/mpbackup/config.toml"
+ln -sf "${USER_HOME}/.local/bin/mptool" /usr/local/bin/mptool
+rm -f /usr/local/bin/mpbackup   # the tool's old name
+CONFIG="${USER_HOME}/.config/mptool/config.toml"
 if [[ ! -f "$CONFIG" ]]; then
-    sudo -u "$NEW_USER" install -D -m 600 "${USER_HOME}/minipi/backup/config.example.toml" "$CONFIG"
+    sudo -u "$NEW_USER" install -D -m 600 "${USER_HOME}/minipi/mptool/config.example.toml" "$CONFIG"
 fi
-print_success "mpbackup installed (the nightly timer starts once the big drive is added)"
+print_success "mptool installed (the nightly timer starts once the big drive is added)"
 
 # ── Step 7: Close the default doors ──────────────────────────────────────────
 # Arch ARM ships with alarm/alarm and root/root, known to everyone.

@@ -1,7 +1,8 @@
 # Mini Pi
 
-A Raspberry Pi with a big drive that backs up the Minipass server every night.
-It runs Arch Linux ARM (no desktop) and **mpbackup**, the backup tool in `backup/`.
+A Raspberry Pi with a big drive that looks after the Minipass server: it backs it up
+every night and checks every customer's site every 5 minutes. It runs Arch Linux ARM
+(no desktop) and **mptool**, the Minipass tool in `mptool/`.
 
 Works on a Raspberry Pi 3 or 4 (64-bit). Not on a Pi 5.
 
@@ -24,8 +25,8 @@ sudo ./flash.sh
 ```
 
 It asks for a username and a password for the Pi, then does the rest:
-updates Arch, builds the backup tool, copies your backup settings
-(`~/.config/mpbackup/config.toml`) and lets the Pi log in to the Minipass server.
+updates Arch, builds mptool, copies your settings
+(`~/.config/mptool/config.toml`) and lets the Pi log in to the Minipass server.
 
 **4. Add the big drive** (plug it into the Pi, with its own power if it has a plug):
 
@@ -35,13 +36,22 @@ ssh -t minipi sudo ~/minipi/pi/add-drive.sh
 
 Done: a backup runs every night at 3:00, and Discord tells you how it went.
 
+## Site checks
+
+Every 5 minutes the Pi loads each customer's login page (`https://<customer>.minipass.me/login`)
+and checks that it answers, that the login form is really there, and that the certificate
+has more than 14 days left. A problem seen twice in a row goes to Discord, and so does the
+recovery. Customers come from the last backup, so new ones are picked up overnight.
+Settings (all optional) are at the end of `mptool/config.example.toml`.
+
 ## Every day
 
 | What | Command |
 |------|---------|
-| Open the backup menu | `ssh -t minipi mpbackup` |
-| Run a backup now | `ssh minipi mpbackup run` |
-| Get the newest backup tool from GitHub | `ssh minipi '~/minipi/pi/update.sh'` |
+| Open the backup menu | `ssh -t minipi mptool` |
+| Run a backup now | `ssh minipi mptool run` |
+| Check the sites now | `ssh minipi mptool monitor` |
+| Get the newest mptool from GitHub | `ssh minipi '~/minipi/pi/update.sh'` |
 
 If `ssh minipi` doesn't work, use the Pi's address (install.sh shows it), e.g. `ssh 192.168.1.50`.
 
@@ -55,10 +65,10 @@ If `ssh minipi` doesn't work, use the Pi's address (install.sh shows it), e.g. `
 | `pi/update.sh` | Pi | Pulls the latest tool from GitHub and rebuilds it |
 | `pi/add-drive.sh` | Pi | Prepares the big drive and starts the nightly backup |
 | `pi/screen.sh` | Pi | Turns on the 3.2" screen on the pins (then restart) |
-| `backup/` | | The backup tool (Rust) |
+| `mptool/` | | The Minipass tool (Rust): backup, monitoring, screen |
 
 Secrets (the Discord link, server keys) never go in this repo. They live only in
-`~/.config/mpbackup/config.toml` on the laptop and on the Pi.
+`~/.config/mptool/config.toml` on the laptop and on the Pi.
 
 ## The little screen
 
@@ -68,6 +78,6 @@ The 3.2" 320x240 screen on the pins (a Waveshare 3.2" (B) copy) needs one extra 
 ssh -t minipi 'sudo ~/minipi/pi/screen.sh && sudo reboot'
 ```
 
-It then shows up on the Pi as `/dev/fb1`. Touch is not used.
-
-Next: a logo animation and the backup status on it.
+It then shows the Minipass logo and the status in turn, 10 seconds each: the overall state,
+then one row per customer with its last backup and its login page response time.
+When something is wrong the status stays up, on red. Touch is not used.

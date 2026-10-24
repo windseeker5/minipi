@@ -15,7 +15,9 @@ print_warn()   { printf "${YELLOW}${BOLD}[!]${NC} %s\n" "$1"; }
 print_error()  { printf "${RED}${BOLD}[✗]${NC} %s\n" "$1" >&2; exit 1; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-LAPTOP_CONFIG="$HOME/.config/mpbackup/config.toml"
+LAPTOP_CONFIG="$HOME/.config/mptool/config.toml"
+# Before the rename the tool was called mpbackup.
+[[ -f "$LAPTOP_CONFIG" ]] || LAPTOP_CONFIG="$HOME/.config/mpbackup/config.toml"
 PI_BACKUP_ROOT="/mnt/backup/minipass"
 SSH_OPTS=(-o StrictHostKeyChecking=accept-new -o ConnectTimeout=5)
 # Raspberry Pi network cards start with one of these (Raspberry Pi Foundation / Trading).
@@ -109,7 +111,7 @@ print_step "Copying your backup settings to the Pi"
 if [[ $HAVE_CONFIG -eq 1 ]]; then
     # Same settings as this laptop, but the nights go to the big drive.
     sed -E "s|^([[:space:]]*backup_root[[:space:]]*=).*|\1 \"${PI_BACKUP_ROOT}\"|" "$LAPTOP_CONFIG" \
-        | ssh "${PI_SSH[@]}" 'mkdir -p ~/.config/mpbackup && umask 077 && cat > ~/.config/mpbackup/config.toml'
+        | ssh "${PI_SSH[@]}" 'mkdir -p ~/.config/mptool && umask 077 && cat > ~/.config/mptool/config.toml'
     print_success "Settings copied (backups go to ${PI_BACKUP_ROOT})"
 else
     print_warn "Skipped: no settings on this laptop"
@@ -155,4 +157,4 @@ printf "\n${GREEN}${BOLD}The Mini Pi is ready!${NC}\n\n"
 printf "${BOLD}Next:${NC}\n"
 printf "  1. Plug the big drive into the Pi\n"
 printf "  2. Run:  ssh -t %s@%s sudo ~/minipi/pi/add-drive.sh\n\n" "$PI_USER" "$PI"
-printf "Open the backup menu any time:  ssh -t %s@%s mpbackup\n\n" "$PI_USER" "$PI"
+printf "Open the backup menu any time:  ssh -t %s@%s mptool\n\n" "$PI_USER" "$PI"

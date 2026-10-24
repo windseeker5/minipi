@@ -1,6 +1,7 @@
 mod compare;
 mod config;
 mod menu;
+mod monitor;
 mod notify;
 mod remote;
 mod retention;
@@ -13,18 +14,19 @@ use config::Config;
 use std::process::ExitCode;
 
 const USAGE: &str = "Usage:
-  mpbackup               open the menu
-  mpbackup run           run the backup now (the nightly timer calls this)
-  mpbackup status        show the last backup and the nights on disk
-  mpbackup screen        show the logo and the status on the Pi's little screen
-  mpbackup test-discord  send a test message to the Discord channel";
+  mptool               open the menu
+  mptool run           run the backup now (the nightly timer calls this)
+  mptool status        show the last backup and the nights on disk
+  mptool monitor       check every customer's login page (the 5-minute timer calls this)
+  mptool screen        show the logo and the status on the Pi's little screen
+  mptool test-discord  send a test message to the Discord channel";
 
 fn main() -> ExitCode {
     let cfg = match Config::load() {
         Ok(c) => c,
         Err(e) => {
             eprintln!("{e:#}");
-            eprintln!("Example config: backup/config.example.toml");
+            eprintln!("Example config: mptool/config.example.toml");
             return ExitCode::FAILURE;
         }
     };
@@ -57,6 +59,13 @@ fn main() -> ExitCode {
             status::print(&cfg.root());
             ExitCode::SUCCESS
         }
+        Some("monitor") => match monitor::run(&cfg) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(e) => {
+                eprintln!("{e:#}");
+                ExitCode::FAILURE
+            }
+        },
         Some("screen") => match screen::run(&cfg) {
             Ok(()) => ExitCode::SUCCESS,
             Err(e) => {

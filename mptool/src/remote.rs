@@ -1,5 +1,5 @@
 //! Talking to the VPS. Every command here only reads from the server,
-//! except the temporary DB copies in /tmp/mpbackup.* which we remove ourselves.
+//! except the temporary DB copies in /tmp/mptool.* which we remove ourselves.
 
 use crate::config::Config;
 use anyhow::{bail, Context, Result};
@@ -31,7 +31,7 @@ impl Remote {
             "-o".into(),
             "ControlMaster=auto".into(),
             "-o".into(),
-            "ControlPath=/tmp/mpbackup-ssh-%C".into(),
+            "ControlPath=/tmp/mptool-ssh-%C".into(),
             "-o".into(),
             "ControlPersist=120".into(),
         ]

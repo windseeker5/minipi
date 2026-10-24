@@ -21,7 +21,7 @@ print_step "Checking"
 OWNER="${SUDO_USER:-}"
 [[ -n "$OWNER" && "$OWNER" != "root" ]] || print_error "Run it with sudo from your own user, not as root."
 OWNER_HOME="$(getent passwd "$OWNER" | cut -d: -f6)"
-CONFIG="${OWNER_HOME}/.config/mpbackup/config.toml"
+CONFIG="${OWNER_HOME}/.config/mptool/config.toml"
 print_success "Backups will belong to '$OWNER'"
 
 # ── Step 2: The drive ────────────────────────────────────────────────────────
@@ -101,10 +101,10 @@ fi
 
 # ── Step 4: Nightly timer ────────────────────────────────────────────────────
 print_step "Starting the nightly backup"
-systemctl --user -M "${OWNER}@" enable --now mpbackup.timer
-NEXT="$(systemctl --user -M "${OWNER}@" show mpbackup.timer -p NextElapseUSecRealtime --value)"
+systemctl --user -M "${OWNER}@" enable --now mptool-backup.timer
+NEXT="$(systemctl --user -M "${OWNER}@" show mptool-backup.timer -p NextElapseUSecRealtime --value)"
 print_success "Next backup: ${NEXT:-tonight at 3:00}"
 
 printf "\n${GREEN}${BOLD}The Mini Pi is backing up!${NC}\n\n"
-printf "  Run one now to try it:  mpbackup run\n"
-printf "  Open the menu:          mpbackup\n\n"
+printf "  Run one now to try it:  mptool run\n"
+printf "  Open the menu:          mptool\n\n"

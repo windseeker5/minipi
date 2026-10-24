@@ -70,7 +70,7 @@ pub fn folder_size(dir: &Path) -> u64 {
     total
 }
 
-/// Plain-text summary for `mpbackup status`.
+/// Plain-text summary for `mptool status`.
 pub fn print(root: &Path) {
     match Status::read(&root.join("last-run.json")) {
         None => println!("No backup has run yet ({}).", root.display()),
