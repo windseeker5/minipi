@@ -91,10 +91,14 @@ if ssh "${SSH_OPTS[@]}" -o BatchMode=yes "root@$PI" true 2>/dev/null; then
     scp "${SSH_OPTS[@]}" -q "$SCRIPT_DIR/pi/setup.sh" "root@$PI:/root/minipi-setup.sh"
     ssh "${SSH_OPTS[@]}" -t "root@$PI" bash /root/minipi-setup.sh "$PI_USER"
 elif ssh "${SSH_OPTS[@]}" -o BatchMode=yes "$PI_USER@$PI" true 2>/dev/null; then
-    # Already set up once (root login is closed at the end of setup): run it again with sudo.
-    print_warn "The Pi was already set up, running the setup again as $PI_USER"
-    scp "${SSH_OPTS[@]}" -q "$SCRIPT_DIR/pi/setup.sh" "$PI_USER@$PI:/tmp/minipi-setup.sh"
-    ssh "${SSH_OPTS[@]}" -t "$PI_USER@$PI" sudo bash /tmp/minipi-setup.sh "$PI_USER"
+    # Already set up once (root login is closed at the end of setup).
+    print_warn "The Pi is already set up."
+    printf "${YELLOW}Run the whole Pi setup again? (N = skip to the next steps) [y/N]${NC} "
+    read -r reply
+    if [[ "$reply" =~ ^[yY] ]]; then
+        scp "${SSH_OPTS[@]}" -q "$SCRIPT_DIR/pi/setup.sh" "$PI_USER@$PI:/tmp/minipi-setup.sh"
+        ssh "${SSH_OPTS[@]}" -t "$PI_USER@$PI" sudo bash /tmp/minipi-setup.sh "$PI_USER"
+    fi
 else
     print_error "Cannot log in to $PI. Was the card made with flash.sh on this laptop?"
 fi
@@ -116,8 +120,12 @@ print_step "Letting the Pi log in to the Minipass server"
 if [[ $HAVE_CONFIG -eq 1 ]]; then
     # The backup tool refuses unknown servers: give the Pi the server identity this laptop already trusts.
     HOST="${SERVER#*@}"
-    { ssh-keygen -F "[$HOST]:$PORT"; ssh-keygen -F "$HOST"; } 2>/dev/null | grep -v '^#' \
-        | ssh "${PI_SSH[@]}" 'touch ~/.ssh/known_hosts && while read -r l; do grep -qxF "$l" ~/.ssh/known_hosts || echo "$l" >> ~/.ssh/known_hosts; done'
+    # (ssh-keygen -F fails when one of the two forms isn't known: that's fine, hence the || true.)
+    KNOWN="$( { ssh-keygen -F "[$HOST]:$PORT" || true; ssh-keygen -F "$HOST" || true; } 2>/dev/null | grep -v '^#' || true)"
+    if [[ -n "$KNOWN" ]]; then
+        printf '%s\n' "$KNOWN" \
+            | ssh "${PI_SSH[@]}" 'touch ~/.ssh/known_hosts && while read -r l; do grep -qxF "$l" ~/.ssh/known_hosts || echo "$l" >> ~/.ssh/known_hosts; done'
+    fi
     PI_KEY="$(ssh "${PI_SSH[@]}" cat .ssh/id_ed25519.pub)"
     printf '%s\n' "$PI_KEY" | ssh -p "$PORT" "$SERVER" \
         'mkdir -p ~/.ssh && chmod 700 ~/.ssh && touch ~/.ssh/authorized_keys && read -r k && (grep -qxF "$k" ~/.ssh/authorized_keys || echo "$k" >> ~/.ssh/authorized_keys)'
