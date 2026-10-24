@@ -17,7 +17,7 @@ discord_daily_ok = true
 # Customers the "Restore a customer" menu is allowed to touch.
 restore_allowed = ["demo"]
 
-# Site monitoring (mptool monitor, every 5 minutes on the Pi). These are the defaults.
+# Site monitoring (mptool monitor, every 15 minutes on the Pi). These are the defaults.
 # monitor_url = "https://{customer}.minipass.me/login"
 # monitor_expect = "type=\"password\""
 # monitor_slow_ms = 3000

@@ -1,8 +1,8 @@
 [Unit]
-Description=Check the Minipass sites every 5 minutes
+Description=Check the Minipass sites every 15 minutes
 
 [Timer]
-OnCalendar=*:0/5
+OnCalendar=*:0/15
 AccuracySec=30s
 
 [Install]

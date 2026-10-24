@@ -17,7 +17,7 @@ const USAGE: &str = "Usage:
   mptool               open the menu
   mptool run           run the backup now (the nightly timer calls this)
   mptool status        show the last backup and the nights on disk
-  mptool monitor       check every customer's login page (the 5-minute timer calls this)
+  mptool monitor       check every customer's login page (the 15-minute timer calls this)
   mptool screen        show the logo and the status on the Pi's little screen
   mptool test-discord  send a test message to the Discord channel";
 

@@ -40,7 +40,7 @@ rm -f "$USER_UNITS/mpbackup.service" "$USER_UNITS/mpbackup.timer" "$USER_UNITS/m
     "$HOME/.local/bin/mpbackup"
 systemctl --user daemon-reload
 
-# Site checks every 5 minutes, and the screen restarted onto the new program.
+# Site checks every 15 minutes, and the screen restarted onto the new program.
 systemctl --user enable --now mptool-monitor.timer
 systemctl --user try-restart mptool-screen.service
-print_success "mptool installed in ~/.local/bin (site checks every 5 minutes)"
+print_success "mptool installed in ~/.local/bin (site checks every 15 minutes)"

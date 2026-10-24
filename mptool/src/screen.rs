@@ -88,7 +88,7 @@ fn health(st: &Option<Status>, mon: &Option<Monitor>) -> Health {
         return h(BAD, &title, format!("{}: {}", first.customer, first.problem));
     }
     let Some(s) = st else { return h(WARN, "Waiting", "No backup has run yet".into()) };
-    let checks_ok = mon.as_ref().and_then(|m| age_minutes(&m.checked)).is_some_and(|m| m < 15);
+    let checks_ok = mon.as_ref().and_then(|m| age_minutes(&m.checked)).is_some_and(|m| m < 35);
     if !checks_ok {
         return h(WARN, "Checks paused", "Site checks are not running".into());
     }

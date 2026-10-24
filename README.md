@@ -1,7 +1,7 @@
 # Mini Pi
 
 A Raspberry Pi with a big drive that looks after the Minipass server: it backs it up
-every night and checks every customer's site every 5 minutes. It runs Arch Linux ARM
+every night and checks every customer's site every 15 minutes. It runs Arch Linux ARM
 (no desktop) and **mptool**, the Minipass tool in `mptool/`.
 
 Works on a Raspberry Pi 3 or 4 (64-bit). Not on a Pi 5.
@@ -38,10 +38,10 @@ Done: a backup runs every night at 3:00, and Discord tells you how it went.
 
 ## Site checks
 
-Every 5 minutes the Pi loads each customer's login page (`https://<customer>.minipass.me/login`)
+Every 15 minutes the Pi loads each customer's login page (`https://<customer>.minipass.me/login`)
 and checks that it answers, that the login form is really there, and that the certificate
-has more than 14 days left. A problem seen twice in a row goes to Discord, and so does the
-recovery. Customers come from the last backup, so new ones are picked up overnight.
+has more than 14 days left. A site that fails is checked again a minute later; if it still
+fails, Discord gets an alert right away, and another when it's back. Customers come from the last backup, so new ones are picked up overnight.
 Settings (all optional) are at the end of `mptool/config.example.toml`.
 
 ## Every day

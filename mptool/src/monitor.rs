@@ -1,7 +1,8 @@
-//! Site monitoring (`mptool monitor`, every 5 minutes on the Pi). Each customer's
+//! Site monitoring (`mptool monitor`, every 15 minutes on the Pi). Each customer's
 //! login page must answer, really show the login form, and have a certificate that
 //! isn't about to expire. A problem goes to Discord once it shows up twice in a row
-//! (one blip is not worth a message), and again when it's gone.
+//! (one blip is not worth a message), and again when it's gone. A first failure is
+//! checked again a minute later, so a real outage is reported in the same round.
 //! Customers come from the last backup, so new ones are picked up overnight.
 
 use crate::config::Config;
@@ -13,9 +14,12 @@ use serde::{Deserialize, Serialize};
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::Command;
+use std::time::Duration;
 
 /// Checks in a row before a problem is reported.
 const FAILS_TO_ALERT: u32 = 2;
+/// How long to wait before looking again at a site that just failed.
+const RECHECK: Duration = Duration::from_secs(60);
 const MARK: &str = "\n__mptool__ ";
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -73,21 +77,30 @@ pub fn run(cfg: &Config) -> Result<()> {
         .collect();
     let before = Monitor::read().unwrap_or_default();
 
-    // All sites at once: a slow one doesn't hold up the others.
-    let results: Vec<Check> = std::thread::scope(|s| {
-        let jobs: Vec<_> = customers
-            .iter()
-            .map(|c| {
-                let url = cfg.monitor_url.replace("{customer}", c);
-                s.spawn(move || check(cfg, &url))
-            })
-            .collect();
-        jobs.into_iter().map(|j| j.join().unwrap_or_else(|_| Check::failed("check crashed"))).collect()
-    });
+    let urls: Vec<String> = customers.iter().map(|c| cfg.monitor_url.replace("{customer}", c)).collect();
+    let mut results = check_all(cfg, &urls);
+
+    // A first failure gets a second look a minute later: a blip clears, a real
+    // outage is confirmed now rather than at the next round.
+    let prev_fails = |c: &String| before.sites.iter().find(|s| &s.customer == c).map_or(0, |s| s.fails);
+    let again: Vec<usize> = (0..customers.len())
+        .filter(|&i| !results[i].problem.is_empty() && prev_fails(&customers[i]) + 1 < FAILS_TO_ALERT)
+        .collect();
+    let mut extra = vec![0; customers.len()];
+    if !again.is_empty() {
+        std::thread::sleep(RECHECK);
+        let retry = check_all(cfg, &again.iter().map(|&i| urls[i].clone()).collect::<Vec<_>>());
+        for (&i, r) in again.iter().zip(retry) {
+            if !r.problem.is_empty() {
+                extra[i] = 1;
+            }
+            results[i] = r;
+        }
+    }
 
     let now = now();
     let mut sites = vec![];
-    for (c, r) in customers.iter().zip(results) {
+    for (i, (c, r)) in customers.iter().zip(results).enumerate() {
         let prev = before.sites.iter().find(|s| &s.customer == c).cloned().unwrap_or_default();
         let mut site = Site {
             customer: c.clone(),
@@ -114,7 +127,7 @@ pub fn run(cfg: &Config) -> Result<()> {
                 site.down_since.clear();
             }
         } else {
-            site.fails = prev.fails + 1;
+            site.fails = prev.fails + 1 + extra[i];
             if site.down_since.is_empty() {
                 site.down_since = now.clone();
             }
@@ -142,6 +155,14 @@ pub fn run(cfg: &Config) -> Result<()> {
         let _ = writeln!(out, "{:<10} {:<8} {:>5} ms   {}", site.customer, word, site.ms, note);
     }
     Ok(())
+}
+
+/// All sites at once: a slow one doesn't hold up the others.
+fn check_all(cfg: &Config, urls: &[String]) -> Vec<Check> {
+    std::thread::scope(|s| {
+        let jobs: Vec<_> = urls.iter().map(|url| s.spawn(move || check(cfg, url))).collect();
+        jobs.into_iter().map(|j| j.join().unwrap_or_else(|_| Check::failed("check crashed"))).collect()
+    })
 }
 
 struct Check {
