@@ -60,13 +60,16 @@ chsh -s /usr/bin/zsh "$TARGET" >/dev/null
 print_success "zsh is the shell for '$TARGET'"
 
 # ── Step 5: Download the plugins now, not at your first login ────────────────
-print_step "Downloading zsh and Neovim plugins (a few minutes)"
+print_step "Downloading zsh and Neovim plugins (10-15 minutes)"
 # The first start installs zinit, the second its plugins.
 for _ in 1 2; do as_user zsh -i -c 'exit' >/dev/null 2>&1 || true; done
 [[ -d "${USER_HOME}/.local/share/zinit/plugins/romkatv---powerlevel10k" ]] \
     || print_warn "zsh plugins: they will finish at your first login"
 as_user timeout 900 nvim --headless '+Lazy! restore' +qa >/dev/null 2>&1 \
     || print_warn "Neovim plugins: they will finish the first time you open nvim"
+# The code-colour parsers LazyVim wants, built once now (it would build them all at once in nvim).
+as_user timeout 1800 nvim --headless '+lua require("nvim-treesitter").install(require("lazy.core.plugin").values(require("lazy.core.config").plugins["nvim-treesitter"], "opts", false).ensure_installed or {}):wait(1800000)' +qa >/dev/null 2>&1 \
+    || print_warn "Neovim parsers: they will finish the first time you open nvim"
 print_success "Plugins ready"
 
 printf "\n${GREEN}${BOLD}Terminal ready!${NC} Log in again to get zsh.\n\n"
