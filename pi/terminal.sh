@@ -44,7 +44,7 @@ else
 fi
 # Terminal configs only: nothing for Sway, Waybar or Alacritty.
 as_user mkdir -p "${USER_HOME}/.config"
-for pair in .zshrc:.zshrc .p10k.zsh:.p10k.zsh .config/nvim:.config/nvim; do
+for pair in .zshrc:.zshrc .p10k.zsh:.p10k.zsh .config/nvim:.config/nvim .config/fastfetch:.config/fastfetch; do
     src="${DOTFILES}/${pair%%:*}" dst="${USER_HOME}/${pair##*:}"
     # Keep anything that was there before and isn't already a link.
     if [[ -e "$dst" && ! -L "$dst" ]]; then
@@ -52,7 +52,7 @@ for pair in .zshrc:.zshrc .p10k.zsh:.p10k.zsh .config/nvim:.config/nvim; do
     fi
     as_user ln -sfn "$src" "$dst"
 done
-print_success "Linked .zshrc, .p10k.zsh and Neovim to ${DOTFILES}"
+print_success "Linked .zshrc, .p10k.zsh, Neovim and fastfetch to ${DOTFILES}"
 
 # ── Step 4: zsh as the shell ─────────────────────────────────────────────────
 print_step "Making zsh your shell"
