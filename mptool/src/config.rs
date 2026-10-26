@@ -29,6 +29,9 @@ pub struct Config {
     /// Customers not to check.
     #[serde(default)]
     pub monitor_skip: Vec<String>,
+    /// The little screen's brightness, in percent (its light can't be turned down, the colors can).
+    #[serde(default = "screen_brightness")]
+    pub screen_brightness: u8,
 }
 
 impl Config {
@@ -83,6 +86,10 @@ fn monitor_slow_ms() -> u64 {
 
 fn monitor_cert_days() -> i64 {
     14
+}
+
+fn screen_brightness() -> u8 {
+    70
 }
 
 fn home() -> PathBuf {

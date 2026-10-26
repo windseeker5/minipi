@@ -1,6 +1,6 @@
 //! The little 3.2" screen on the Pi (`mptool screen`), in a loop: the Minipass logo
 //! opens out from the middle and the tagline types itself (5 s), then the customers
-//! go by 5 per page (10 s a page). Broken customers come first, in red.
+//! go by 5 per page (10 s a page), broken ones first in red, then a flip clock (20 s).
 //! Draws straight into the screen's framebuffer (/dev/fbN, 16-bit RGB565).
 
 use crate::config::Config;
@@ -14,6 +14,7 @@ use std::cmp::Reverse;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{Seek, SeekFrom, Write};
+use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{Duration, Instant};
@@ -23,6 +24,9 @@ const LOGO_TIME: f32 = 5.0;
 /// How long each page of customers stays up.
 const PAGE_TIME: Duration = Duration::from_secs(10);
 const PER_PAGE: usize = 5;
+/// How long the flip clock stays up, and how long one card takes to fall.
+const CLOCK_TIME: f32 = 20.0;
+const FLIP_TIME: f32 = 0.6;
 /// Frames a second while the logo moves: about what the screen can show.
 const FPS: f32 = 20.0;
 const TAGLINE: &str = "minipass management tool";
@@ -50,9 +54,10 @@ const I_WIFI: char = '\u{F05A9}'; // wifi
 const I_CABLE: char = '\u{F0200}'; // ethernet
 const I_DRIVE: char = '\u{F02CA}'; // harddisk
 
-// Same colors as the menu.
+// Same colors as the menu, on black: the dark parts of the screen then let the least light through.
 type Rgb = (u8, u8, u8);
-const BG: Rgb = (26, 27, 38);
+const BG: Rgb = (0, 0, 0);
+const WHITE: Rgb = (255, 255, 255);
 const FG: Rgb = (192, 202, 245);
 const DIM: Rgb = (86, 95, 137);
 const LINE: Rgb = (41, 46, 66);
@@ -61,9 +66,14 @@ const BAR: Rgb = (122, 162, 247);
 const OK: Rgb = (158, 206, 106);
 const BAD: Rgb = (247, 118, 142);
 const WARN: Rgb = (224, 175, 104);
+// The flip clock: black cards with white digits, like the Groundhog Day clock radio.
+const CARD_TOP: Rgb = (36, 36, 36);
+const CARD_BOTTOM: Rgb = (26, 26, 26);
+const PIN: Rgb = (8, 8, 8);
+const DATE: Rgb = (170, 170, 170);
 
 pub fn run(cfg: &Config) -> Result<()> {
-    let mut screen = Screen::find()?;
+    let mut screen = Screen::find(cfg.screen_brightness)?;
     let mut ink = Ink::new()?;
     let mut f = Frame::new(screen.width as i32, screen.height as i32);
     loop {
@@ -90,6 +100,8 @@ pub fn run(cfg: &Config) -> Result<()> {
                 std::thread::sleep(Duration::from_secs(1));
             }
         }
+
+        show_clock(&mut screen, &mut f, &mut ink)?;
     }
 }
 
@@ -126,7 +138,7 @@ fn draw_logo(f: &mut Frame, ink: &mut Ink, t: f32) {
     if t >= 1.5 {
         let n = (((t - 1.5) / 0.08) as usize).min(TAGLINE.len());
         let shown = &TAGLINE[..n];
-        ink.draw(f, Face::Sans, shown, 14, tx, 146, DIM, Align::Left);
+        ink.draw(f, Face::Sans, shown, 14, tx, 146, WHITE, Align::Left);
         let blink_on = (t / 0.45) as i32 % 2 == 0;
         if t < 4.5 && (n < TAGLINE.len() || blink_on) {
             f.rect(tx + ink.width(Face::Sans, shown, 14) + 2, 135, 7, 13, FG);
@@ -283,6 +295,155 @@ fn draw_page(f: &mut Frame, ink: &mut Ink, view: &View, page: usize, pages: usiz
     f.round_rect(bx, 220, bw, 6, TRACK);
     let fill = (bw as f64 * used as f64 / total.max(1) as f64) as i32;
     f.round_rect(bx, 220, fill.clamp(4, bw), 6, BAR);
+}
+
+// ── The flip clock ───────────────────────────────────────────────────────────
+
+/// Hours on the left card, minutes on the right, the date under them.
+const CARD_W: i32 = 138;
+const CARD_H: i32 = 132;
+const CARD_Y: i32 = 36;
+const CARD_GAP: i32 = 16;
+const CARD_RADIUS: f32 = 9.0;
+const DIGITS_PX: u32 = 104;
+
+/// One card shows `from` until `at` seconds into the clock, then falls over to `to`.
+struct Flip {
+    from: String,
+    to: String,
+    at: f32,
+}
+
+/// The clock, like the old flip clock radios: when it comes up the cards flip
+/// from blank to the time one after the other, and they flip again when the time changes.
+fn show_clock(screen: &mut Screen, f: &mut Frame, ink: &mut Ink) -> Result<()> {
+    let mut cards = Cards::new();
+    let now = Local::now();
+    let mut flips = [
+        Flip { from: String::new(), to: now.format("%H").to_string(), at: 0.3 },
+        Flip { from: String::new(), to: now.format("%M").to_string(), at: 0.55 },
+    ];
+    let start = Instant::now();
+    loop {
+        let t = start.elapsed().as_secs_f32();
+        if t >= CLOCK_TIME {
+            return Ok(());
+        }
+        let now = Local::now();
+        for (flip, part) in flips.iter_mut().zip([now.format("%H").to_string(), now.format("%M").to_string()]) {
+            if part != flip.to && t >= flip.at + FLIP_TIME {
+                *flip = Flip { from: std::mem::take(&mut flip.to), to: part, at: t };
+            }
+        }
+
+        f.clear();
+        let x0 = (f.w - 2 * CARD_W - CARD_GAP) / 2;
+        for (i, flip) in flips.iter().enumerate() {
+            cards.draw(f, ink, flip, t, x0 + i as i32 * (CARD_W + CARD_GAP));
+        }
+        let date = now.format("%A %-d %B").to_string();
+        ink.draw(f, Face::Sans, &date, 16, (f.w - ink.width(Face::Sans, &date, 16)) / 2, 204, DATE, Align::Left);
+        screen.show(f)?;
+
+        // Smooth while a card falls, otherwise just often enough to catch the next minute.
+        let moving = flips.iter().any(|x| t < x.at + FLIP_TIME);
+        let next = if moving { ((t * FPS).floor() + 1.0) / FPS } else { t + 0.25 };
+        std::thread::sleep(Duration::from_secs_f32(next).saturating_sub(start.elapsed()));
+    }
+}
+
+/// Each card face drawn once, by the digits on it, and the card's rounded outline.
+struct Cards {
+    faces: HashMap<String, Frame>,
+    mask: Vec<u8>,
+}
+
+impl Cards {
+    fn new() -> Cards {
+        let r = CARD_RADIUS;
+        let mut mask = Vec::with_capacity((CARD_W * CARD_H) as usize);
+        for y in 0..CARD_H {
+            for x in 0..CARD_W {
+                let (px, py) = (x as f32 + 0.5, y as f32 + 0.5);
+                let dx = px - px.clamp(r, CARD_W as f32 - r);
+                let dy = py - py.clamp(r, CARD_H as f32 - r);
+                mask.push(((r + 0.5 - (dx * dx + dy * dy).sqrt()).clamp(0.0, 1.0) * 255.0) as u8);
+            }
+        }
+        Cards { faces: HashMap::new(), mask }
+    }
+
+    /// A card showing `text`: the top half a touch lighter, a split across the middle,
+    /// and the pins it turns on at both ends of the split.
+    fn face(&mut self, ink: &mut Ink, text: &str) {
+        self.faces.entry(text.to_string()).or_insert_with(|| {
+            let mut c = Frame::new(CARD_W, CARD_H);
+            let half = CARD_H / 2;
+            c.rect(0, 0, CARD_W, half, CARD_TOP);
+            c.rect(0, half, CARD_W, CARD_H - half, CARD_BOTTOM);
+            let m = ink.font(Face::Bold).metrics('0', DIGITS_PX as f32);
+            let base = (CARD_H + m.height as i32) / 2 + m.ymin;
+            let w = ink.width(Face::Bold, text, DIGITS_PX);
+            ink.draw(&mut c, Face::Bold, text, DIGITS_PX, (CARD_W - w) / 2, base, WHITE, Align::Left);
+            c.rect(0, half - 2, CARD_W, 5, BG);
+            c.rect(0, half - 8, 5, 17, PIN);
+            c.rect(CARD_W - 5, half - 8, 5, 17, PIN);
+            c
+        });
+    }
+
+    /// One card `t` seconds into the clock. While it flips, the new top half is already
+    /// there behind the old one, which falls towards you (darker, wider at its free edge,
+    /// faster as it goes), then the new bottom half comes down over the old one.
+    fn draw(&mut self, f: &mut Frame, ink: &mut Ink, flip: &Flip, t: f32, x: i32) {
+        self.face(ink, &flip.from);
+        self.face(ink, &flip.to);
+        let (old, new) = (&self.faces[&flip.from], &self.faces[&flip.to]);
+        let half = CARD_H / 2;
+        let p = ((t - flip.at) / FLIP_TIME).clamp(0.0, 1.0);
+        if p <= 0.0 || p >= 1.0 {
+            self.put(f, if p <= 0.0 { old } else { new }, x, 0..CARD_H);
+            return;
+        }
+        self.put(f, new, x, 0..half);
+        self.put(f, old, x, half..CARD_H);
+
+        let angle = std::f32::consts::PI * p * p;
+        let (top, card) = if angle < std::f32::consts::FRAC_PI_2 { (true, old) } else { (false, new) };
+        let h = (half as f32 * angle.cos().abs()).round() as i32;
+        let light = 1.0 - 0.55 * angle.sin();
+        let cx = CARD_W as f32 / 2.0;
+        for dy in 0..h {
+            // How far this row is from the hinge, 0 to 1, and which row of the face it shows.
+            let (far, sy, y) = if top {
+                ((h - dy) as f32 / h as f32, dy * half / h, CARD_Y + half - h + dy)
+            } else {
+                ((dy + 1) as f32 / h as f32, half + dy * half / h, CARD_Y + half + dy)
+            };
+            let wide = 1.0 + 0.12 * angle.sin() * far;
+            let reach = (cx * wide).ceil() as i32;
+            for ox in -reach..reach {
+                let sx = (cx + (ox as f32 + 0.5) / wide) as i32;
+                if !(0..CARD_W).contains(&sx) {
+                    continue;
+                }
+                let at = (sy * CARD_W + sx) as usize;
+                let (r, g, b) = card.px[at];
+                let shade = |v: u8| (v as f32 * light) as u8;
+                f.blend(x + cx as i32 + ox, y, (shade(r), shade(g), shade(b)), self.mask[at]);
+            }
+        }
+    }
+
+    /// Rows `rows` of a card face, in place.
+    fn put(&self, f: &mut Frame, card: &Frame, x: i32, rows: Range<i32>) {
+        for y in rows {
+            for cx in 0..CARD_W {
+                let at = (y * CARD_W + cx) as usize;
+                f.blend(x + cx, CARD_Y + y, card.px[at], self.mask[at]);
+            }
+        }
+    }
 }
 
 // ── Facts ────────────────────────────────────────────────────────────────────
@@ -496,12 +657,14 @@ struct Screen {
     width: u32,
     height: u32,
     stride: usize,
-    /// What the screen shows now, so an unchanged frame isn't sent again.
+    /// What the screen shows now, so only the rows that change are sent.
     shown: Vec<u8>,
+    /// 100 = the colors as drawn; lower dims them all.
+    brightness: u32,
 }
 
 impl Screen {
-    fn find() -> Result<Screen> {
+    fn find(brightness: u8) -> Result<Screen> {
         for entry in std::fs::read_dir("/sys/class/graphics").context("no framebuffers")?.flatten() {
             let sys = entry.path();
             let name = read_sys(&sys, "name");
@@ -523,6 +686,7 @@ impl Screen {
                 height: h.parse()?,
                 stride: read_sys(&sys, "stride").parse()?,
                 shown: Vec::new(),
+                brightness: brightness.min(100) as u32,
             });
         }
         bail!("no small screen found (run pi/screen.sh on the Pi, then restart)")
@@ -532,16 +696,23 @@ impl Screen {
         let mut bytes = vec![0u8; self.stride * f.h as usize];
         for (y, row) in f.px.chunks_exact(f.w as usize).enumerate() {
             for (x, &(r, g, b)) in row.iter().enumerate() {
-                let p = ((r as u16 >> 3) << 11) | ((g as u16 >> 2) << 5) | (b as u16 >> 3);
+                let dim = |v: u8| (v as u32 * self.brightness / 100) as u16;
+                let (r, g, b) = (dim(r), dim(g), dim(b));
+                // Green gets one more bit than red and blue: a grey keeps it in step, or dark greys turn green.
+                let g6 = if r == g && g == b { (r >> 3) << 1 } else { g >> 2 };
+                let p = ((r >> 3) << 11) | (g6 << 5) | (b >> 3);
                 let at = y * self.stride + x * 2;
                 bytes[at..at + 2].copy_from_slice(&p.to_le_bytes());
             }
         }
-        if bytes != self.shown {
-            self.dev.seek(SeekFrom::Start(0))?;
-            self.dev.write_all(&bytes)?;
-            self.shown = bytes;
-        }
+        // The screen is slow to fill, so only the band of rows that changed is sent.
+        let line = self.stride;
+        let changed = |y: &usize| self.shown.get(y * line..(y + 1) * line) != Some(&bytes[y * line..(y + 1) * line]);
+        let Some(first) = (0..f.h as usize).find(changed) else { return Ok(()) };
+        let last = (0..f.h as usize).rev().find(changed).unwrap_or(first);
+        self.dev.seek(SeekFrom::Start((first * line) as u64))?;
+        self.dev.write_all(&bytes[first * line..(last + 1) * line])?;
+        self.shown = bytes;
         Ok(())
     }
 }

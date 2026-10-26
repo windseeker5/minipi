@@ -23,3 +23,7 @@ restore_allowed = ["demo"]
 # monitor_slow_ms = 3000
 # monitor_cert_days = 14
 # monitor_skip = []
+
+# The little screen's brightness in percent (100 = full colors). Its backlight can't be dimmed,
+# so this darkens what is drawn.
+# screen_brightness = 70
