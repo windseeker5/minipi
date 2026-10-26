@@ -67,7 +67,25 @@ EOF
 "$HELPER"
 print_success "Boot files updated (kept after kernel updates)"
 
-# ── Step 5: Show the backup status on it ─────────────────────────────────────
+# ── Step 5: Keep the text console off it ─────────────────────────────────────
+print_step "Keeping the text console off the screen"
+# Otherwise the console's blinking cursor draws over the picture, in the bottom-left corner.
+cat > /usr/local/bin/minipi-lcd-console <<'EOF'
+#!/bin/sh
+# Takes the text console off the Mini Pi screen (run by udev when the screen appears).
+for v in /sys/class/vtconsole/vtcon*; do
+    grep -q "frame buffer" "$v/name" && echo 0 > "$v/bind"
+done
+exit 0
+EOF
+chmod 755 /usr/local/bin/minipi-lcd-console
+cat > /etc/udev/rules.d/90-minipi-lcd.rules <<'EOF'
+ACTION=="add", SUBSYSTEM=="graphics", ATTR{name}=="fb_ili9340", RUN+="/usr/local/bin/minipi-lcd-console"
+EOF
+/usr/local/bin/minipi-lcd-console
+print_success "Only the backup status draws on the screen"
+
+# ── Step 6: Show the backup status on it ─────────────────────────────────────
 if [[ -n "$OWNER" && "$OWNER" != "root" ]]; then
     print_step "Showing the backup status on the screen"
     usermod -aG video "$OWNER"
