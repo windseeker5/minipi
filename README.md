@@ -79,7 +79,7 @@ or the address on the little screen, e.g. `ssh 192.168.1.50`.
 | `pi/setup.sh` | Pi | Updates Arch, creates your user, installs the tool |
 | `pi/update.sh` | Pi | Pulls the latest tool from GitHub and rebuilds it |
 | `pi/add-drive.sh` | Pi | Prepares the big drive and starts the nightly backup |
-| `pi/screen.sh` | Pi | Turns on the 3.2" screen on the pins (then restart) |
+| `pi/screen.sh` | Pi | Turns on the 3.5" screen on its ribbon (then restart) |
 | `pi/wifi.sh` | Pi | Puts the Pi on Wi-Fi, or changes the network |
 | `pi/terminal.sh` | Pi | Your terminal from the dotfiles: zsh, Neovim, lazygit, fzf, nnn... |
 | `mptool/` | | The Minipass tool (Rust): backup, monitoring, screen |
@@ -89,11 +89,25 @@ Secrets (the Discord link, server keys) never go in this repo. They live only in
 
 ## The little screen
 
-The 3.2" 320x240 screen on the pins (a Waveshare 3.2" (B) copy) needs one extra step:
+The 3.5" 480x320 screen on a 40-pin ribbon (lcdwiki MPI3501, a Waveshare 3.5" (A) copy)
+needs one extra step:
 
 ```bash
 ssh -t minipi 'sudo ~/minipi/pi/screen.sh && sudo reboot'
 ```
+
+**Plugging the ribbon on the screen: it can sit one row off.** The white plug's box is one row
+longer than its pins at each end, so the screen's 26-hole socket also fits one row off, and it
+feels normal. That puts the Pi's 5 V on the screen's ground, and the Pi then shows only its red
+light. With the power off, seen from the back of the screen with the socket at the top left:
+
+- brown wire at the top, ribbon going left, the 14 spare pins over the board;
+- the first pins go in the top two holes, leaving a small empty gap in the box at the brown end;
+- the end of the plug is about 1 mm from the top edge of the board (about 4 mm means one row off).
+
+In the case the ribbon leaves at the bottom edge of the screen, and `rotate = <270>` in
+`pi/screen/minipi-lcd.dts` makes the picture upright that way. The old 3.2" screen's settings
+are kept in `pi/screen/minipi-lcd-3.2in.dts`.
 
 It then loops: the Minipass logo opens out from the middle and "minipass management tool"
 types itself (5 seconds), then the customers go by 5 per page, 10 seconds a page.

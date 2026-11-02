@@ -1,7 +1,8 @@
-//! The little 3.2" screen on the Pi (`mptool screen`), in a loop: the Minipass logo
+//! The little screen on the Pi (`mptool screen`), in a loop: the Minipass logo
 //! opens out from the middle and the tagline types itself (5 s), then the customers
 //! go by 5 per page (10 s a page), broken ones first in red, then a flip clock (20 s).
-//! Draws straight into the screen's framebuffer (/dev/fbN, 16-bit RGB565).
+//! Draws straight into the screen's framebuffer (/dev/fbN, 16-bit RGB565). The pictures are
+//! laid out 240 px high; a taller screen (the 3.5", 480x320) gets them scaled up to fill it.
 
 use crate::config::Config;
 use crate::menu::age_hours;
@@ -75,7 +76,7 @@ const DATE: Rgb = (170, 170, 170);
 pub fn run(cfg: &Config) -> Result<()> {
     let mut screen = Screen::find(cfg.screen_brightness)?;
     let mut ink = Ink::new()?;
-    let mut f = Frame::new(screen.width as i32, screen.height as i32);
+    let mut f = Frame::new(screen.width as i32 * 240 / screen.height as i32, 240);
     loop {
         let start = Instant::now();
         loop {
@@ -232,6 +233,8 @@ fn rows(cfg: &Config) -> Vec<Row> {
 fn draw_page(f: &mut Frame, ink: &mut Ink, view: &View, page: usize, pages: usize) {
     f.clear();
     let right = f.w - 10;
+    // The columns were laid out 320 px wide: a wider screen gives the extra room to the names.
+    let extra = f.w - 320;
 
     // Top: where to SSH, and the clock (it also shows the screen is alive).
     let (icon, addr, color) = match &view.address {
@@ -246,7 +249,7 @@ fn draw_page(f: &mut Frame, ink: &mut Ink, view: &View, page: usize, pages: usiz
     // Column labels.
     let title = if pages > 1 { format!("customers {}/{pages}", page + 1) } else { "customers".to_string() };
     ink.draw(f, Face::Sans, &title, 11, 10, 48, DIM, Align::Left);
-    for (icon, label, x) in [(I_FILES, "files", 152), (I_SIZE, "size", 226), (I_LOGIN, "login", right)] {
+    for (icon, label, x) in [(I_FILES, "files", 152 + extra), (I_SIZE, "size", 226 + extra), (I_LOGIN, "login", right)] {
         let lw = ink.width(Face::Sans, label, 11);
         ink.draw(f, Face::Sans, label, 11, x, 48, DIM, Align::Right);
         ink.draw(f, Face::Icons, &icon.to_string(), 11, x - lw - 4, 49, DIM, Align::Right);
@@ -262,15 +265,15 @@ fn draw_page(f: &mut Frame, ink: &mut Ink, view: &View, page: usize, pages: usiz
             State::Bad => (I_BAD, BAD),
         };
         ink.draw(f, Face::Icons, &icon.to_string(), 16, 10, y + 1, color, Align::Left);
-        let name = ink.clip(Face::Sans, &r.name, 16, 76);
+        let name = ink.clip(Face::Sans, &r.name, 16, 76 + extra);
         ink.draw(f, Face::Sans, &name, 16, 34, y, FG, Align::Left);
         let backup = match r.backup {
             State::Ok => FG,
             State::Warn => DIM,
             State::Bad => BAD,
         };
-        ink.draw(f, Face::Sans, &r.files, 14, 152, y, backup, Align::Right);
-        ink.draw(f, Face::Sans, &r.size, 14, 226, y, backup, Align::Right);
+        ink.draw(f, Face::Sans, &r.files, 14, 152 + extra, y, backup, Align::Right);
+        ink.draw(f, Face::Sans, &r.size, 14, 226 + extra, y, backup, Align::Right);
         let (face, login) = match r.site {
             State::Ok => (Face::Sans, FG),
             State::Warn => (Face::Sans, WARN),
@@ -633,6 +636,27 @@ impl Frame {
         }
     }
 
+    /// The colour at pixel x,y of a `w` by `h` screen showing this frame stretched to fill it,
+    /// blended from the 4 nearest pixels so the letters stay smooth.
+    fn sample(&self, x: usize, y: usize, w: usize, h: usize) -> Rgb {
+        if (w, h) == (self.w as usize, self.h as usize) {
+            return self.px[y * w + x];
+        }
+        let fx = ((x as f32 + 0.5) * self.w as f32 / w as f32 - 0.5).clamp(0.0, (self.w - 1) as f32);
+        let fy = ((y as f32 + 0.5) * self.h as f32 / h as f32 - 0.5).clamp(0.0, (self.h - 1) as f32);
+        let (x0, y0) = (fx as usize, fy as usize);
+        let (x1, y1) = ((x0 + 1).min(self.w as usize - 1), (y0 + 1).min(self.h as usize - 1));
+        let (tx, ty) = (fx - x0 as f32, fy - y0 as f32);
+        let at = |x: usize, y: usize| self.px[y * self.w as usize + x];
+        let (a, b, c, d) = (at(x0, y0), at(x1, y0), at(x0, y1), at(x1, y1));
+        let mix = |a: u8, b: u8, c: u8, d: u8| {
+            let top = a as f32 + (b as f32 - a as f32) * tx;
+            let bottom = c as f32 + (d as f32 - c as f32) * tx;
+            (top + (bottom - top) * ty).round() as u8
+        };
+        (mix(a.0, b.0, c.0, d.0), mix(a.1, b.1, c.1, d.1), mix(a.2, b.2, c.2, d.2))
+    }
+
     /// A bar with fully round ends, edges smoothed.
     fn round_rect(&mut self, x: i32, y: i32, w: i32, h: i32, color: Rgb) {
         let r = h as f32 / 2.0;
@@ -651,7 +675,7 @@ impl Frame {
 }
 
 /// The small screen's framebuffer. Small SPI screens use the fbtft drivers,
-/// which name their framebuffer "fb_<chip>" (ours: fb_ili9340).
+/// which name their framebuffer "fb_<chip>" (ours: fb_ili9486; the old 3.2" was fb_ili9340).
 struct Screen {
     dev: File,
     width: u32,
@@ -693,9 +717,11 @@ impl Screen {
     }
 
     fn show(&mut self, f: &Frame) -> Result<()> {
-        let mut bytes = vec![0u8; self.stride * f.h as usize];
-        for (y, row) in f.px.chunks_exact(f.w as usize).enumerate() {
-            for (x, &(r, g, b)) in row.iter().enumerate() {
+        let (w, h) = (self.width as usize, self.height as usize);
+        let mut bytes = vec![0u8; self.stride * h];
+        for y in 0..h {
+            for x in 0..w {
+                let (r, g, b) = f.sample(x, y, w, h);
                 let dim = |v: u8| (v as u32 * self.brightness / 100) as u16;
                 let (r, g, b) = (dim(r), dim(g), dim(b));
                 // Green gets one more bit than red and blue: a grey keeps it in step, or dark greys turn green.
@@ -708,8 +734,8 @@ impl Screen {
         // The screen is slow to fill, so only the band of rows that changed is sent.
         let line = self.stride;
         let changed = |y: &usize| self.shown.get(y * line..(y + 1) * line) != Some(&bytes[y * line..(y + 1) * line]);
-        let Some(first) = (0..f.h as usize).find(changed) else { return Ok(()) };
-        let last = (0..f.h as usize).rev().find(changed).unwrap_or(first);
+        let Some(first) = (0..h).find(changed) else { return Ok(()) };
+        let last = (0..h).rev().find(changed).unwrap_or(first);
         self.dev.seek(SeekFrom::Start((first * line) as u64))?;
         self.dev.write_all(&bytes[first * line..(last + 1) * line])?;
         self.shown = bytes;

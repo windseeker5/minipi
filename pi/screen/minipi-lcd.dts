@@ -1,6 +1,7 @@
-// The 3.2" 320x240 screen that sits on the Pi's pins ("3.2inch TFT For RPi 2/B+/B V4.2",
-// a copy of the Waveshare 3.2" (B)). Display: ILI9340 on SPI0 CE0. Touch: XPT2046 on CE1 (unused).
-// Pins: DC = GPIO22, RESET = GPIO27, touch IRQ = GPIO17.
+// The 3.5" 480x320 screen, on a ribbon from the Pi's pins (lcdwiki MPI3501, a copy of the
+// Waveshare 3.5" (A)). Display: ILI9486 behind 16-bit shift registers, on SPI0 CE0.
+// Touch: XPT2046 on CE1 (unused). Pins: DC = GPIO24, RESET = GPIO25, touch IRQ = GPIO17.
+// The old 3.2" screen's version is minipi-lcd-3.2in.dts.
 /dts-v1/;
 /plugin/;
 
@@ -10,7 +11,7 @@
 		brcm,function = <4>;		/* MISO, MOSI, SCLK on SPI0 */
 	};
 	minipi_lcd_pins: minipi-lcd-pins {
-		brcm,pins = <7 8 17 22 27>;
+		brcm,pins = <7 8 17 24 25>;
 		brcm,function = <1 1 0 1 1>;	/* 17 in, the rest out */
 	};
 };
@@ -25,14 +26,15 @@
 	#size-cells = <0>;
 
 	display@0 {
-		compatible = "ilitek,ili9340";
+		compatible = "ilitek,ili9486";
 		reg = <0>;
-		spi-max-frequency = <32000000>;
-		rotate = <270>;
-		bgr;
+		spi-max-frequency = <16000000>;
+		rotate = <270>;	/* upright in the case, with the ribbon leaving at the bottom edge */
 		fps = <25>;
 		buswidth = <8>;
-		dc-gpios = <&gpio 22 0>;	/* active high */
-		reset-gpios = <&gpio 27 1>;	/* active low */
+		regwidth = <16>;		/* the shift registers take 16 bits per command */
+		txbuflen = <32768>;
+		dc-gpios = <&gpio 24 0>;	/* active high */
+		reset-gpios = <&gpio 25 1>;	/* active low */
 	};
 };

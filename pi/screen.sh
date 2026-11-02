@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# screen.sh — Turn on the 3.2" screen that sits on the Pi's pins
+# screen.sh — Turn on the 3.5" screen (on a ribbon from the Pi's pins)
 # Run on the Pi:  sudo ~/minipi/pi/screen.sh   then restart:  sudo reboot
 #
 # Arch ARM boots through U-Boot with the plain Linux device tree, which knows nothing
@@ -80,7 +80,7 @@ exit 0
 EOF
 chmod 755 /usr/local/bin/minipi-lcd-console
 cat > /etc/udev/rules.d/90-minipi-lcd.rules <<'EOF'
-ACTION=="add", SUBSYSTEM=="graphics", ATTR{name}=="fb_ili9340", RUN+="/usr/local/bin/minipi-lcd-console"
+ACTION=="add", SUBSYSTEM=="graphics", ATTR{name}=="fb_ili9*", RUN+="/usr/local/bin/minipi-lcd-console"
 EOF
 /usr/local/bin/minipi-lcd-console
 print_success "Only the backup status draws on the screen"
