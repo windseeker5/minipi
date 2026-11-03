@@ -89,7 +89,7 @@ fn monitor_cert_days() -> i64 {
 }
 
 fn screen_brightness() -> u8 {
-    70
+    80
 }
 
 fn home() -> PathBuf {

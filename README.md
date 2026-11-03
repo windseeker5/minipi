@@ -109,13 +109,13 @@ In the case the ribbon leaves at the bottom edge of the screen, and `rotate = <2
 `pi/screen/minipi-lcd.dts` makes the picture upright that way. The old 3.2" screen's settings
 are kept in `pi/screen/minipi-lcd-3.2in.dts`.
 
-It then loops: the Minipass logo opens out from the middle and "minipass management tool"
-types itself (5 seconds), then the customers go by 5 per page, 10 seconds a page.
+It then loops: the Minipass logo opens out from the middle and "customer recovery system"
+types itself with a blinking cursor (8 seconds), then the customers go by 5 per page, 10 seconds a page.
 The top line has the Pi's address (to SSH in) and the clock. Each row: a green, yellow or red
 icon, the subdomain, last night's files and backup size, and the login page time.
 Broken customers come first, with the broken value in red. The bottom bar shows how much
 of the backup drive the backups use. Last comes a flip clock (20 seconds): its cards flip
 from blank to the time when it comes up, and again when the minute changes. Touch is not used.
 
-The screen's light can't be turned down, so everything is drawn darker instead:
-`screen_brightness = 70` (percent) in `~/.config/mptool/config.toml`, 100 for full colors.
+The screen's light can't be turned down, so everything can only be drawn darker, which also lowers the contrast:
+`screen_brightness` (percent) in `~/.config/mptool/config.toml`. The default is 80, 100 for full colors.
