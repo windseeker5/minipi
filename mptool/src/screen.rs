@@ -1,5 +1,5 @@
 //! The little screen on the Pi (`mptool screen`), in a loop: the Minipass logo
-//! opens out from the middle and the tagline types itself (5 s), then the customers
+//! opens out from the middle and the tagline types itself (8 s), then the customers
 //! go by 5 per page (10 s a page), broken ones first in red, then a flip clock (20 s).
 //! Draws straight into the screen's framebuffer (/dev/fbN, 16-bit RGB565). The pictures are
 //! laid out 240 px high; a taller screen (the 3.5", 480x320) gets them scaled up to fill it.
@@ -21,7 +21,7 @@ use std::process::Command;
 use std::time::{Duration, Instant};
 
 /// How long the logo stays up, its animation included.
-const LOGO_TIME: f32 = 5.0;
+const LOGO_TIME: f32 = 7.7;
 /// How long each page of customers stays up.
 const PAGE_TIME: Duration = Duration::from_secs(10);
 const PER_PAGE: usize = 5;
@@ -30,16 +30,16 @@ const CLOCK_TIME: f32 = 20.0;
 const FLIP_TIME: f32 = 0.6;
 /// Frames a second while the logo moves: about what the screen can show.
 const FPS: f32 = 20.0;
-const TAGLINE: &str = "minipass management tool";
+const TAGLINE: &str = "customer recovery system";
 /// No finished backup for this long means a night was missed.
 const STALE_HOURS: i64 = 26;
 /// Site checks run every 15 minutes: older than this, they have stopped.
 const CHECKS_STALE_MINUTES: i64 = 35;
 
-/// The white logo, 180 px wide, RGBA. Made from
+/// The white logo, 225 px wide, RGBA. Made from
 /// Marketing/brand/logo-spec/minipass-logo-white.svg (see assets/README.md).
-const LOGO: &[u8] = include_bytes!("../assets/logo-180.rgba");
-const LOGO_W: i32 = 180;
+const LOGO: &[u8] = include_bytes!("../assets/logo-225.rgba");
+const LOGO_W: i32 = 225;
 const SANS: &[u8] = include_bytes!("../assets/fonts/LiberationSans-Regular.ttf");
 const BOLD: &[u8] = include_bytes!("../assets/fonts/LiberationSans-Bold.ttf");
 const ICONS: &[u8] = include_bytes!("../assets/fonts/SymbolsNerdFont.ttf");
@@ -64,12 +64,12 @@ const DIM: Rgb = (86, 95, 137);
 const LINE: Rgb = (41, 46, 66);
 const TRACK: Rgb = (36, 40, 59);
 const BAR: Rgb = (122, 162, 247);
-const OK: Rgb = (158, 206, 106);
+const OK: Rgb = (80, 220, 80);
 const BAD: Rgb = (247, 118, 142);
 const WARN: Rgb = (224, 175, 104);
-// The flip clock: black cards with white digits, like the Groundhog Day clock radio.
-const CARD_TOP: Rgb = (36, 36, 36);
-const CARD_BOTTOM: Rgb = (26, 26, 26);
+// The flip clock: dark grey cards with white digits, like the Groundhog Day clock radio.
+const CARD_TOP: Rgb = (46, 46, 46);
+const CARD_BOTTOM: Rgb = (35, 35, 35);
 const PIN: Rgb = (8, 8, 8);
 const DATE: Rgb = (170, 170, 170);
 
@@ -135,14 +135,14 @@ fn draw_logo(f: &mut Frame, ink: &mut Ink, t: f32) {
         }
     }
 
-    let tx = cx - ink.width(Face::Sans, TAGLINE, 14) / 2;
+    let tx = cx - ink.width(Face::Sans, TAGLINE, 17) / 2;
     if t >= 1.5 {
         let n = (((t - 1.5) / 0.08) as usize).min(TAGLINE.len());
         let shown = &TAGLINE[..n];
-        ink.draw(f, Face::Sans, shown, 14, tx, 146, WHITE, Align::Left);
+        ink.draw(f, Face::Sans, shown, 17, tx, 149, WHITE, Align::Left);
         let blink_on = (t / 0.45) as i32 % 2 == 0;
-        if t < 4.5 && (n < TAGLINE.len() || blink_on) {
-            f.rect(tx + ink.width(Face::Sans, shown, 14) + 2, 135, 7, 13, FG);
+        if t < 7.2 && (n < TAGLINE.len() || blink_on) {
+            f.rect(tx + ink.width(Face::Sans, shown, 17) + 2, 135, 8, 16, FG);
         }
     }
 }
@@ -287,17 +287,17 @@ fn draw_page(f: &mut Frame, ink: &mut Ink, view: &View, page: usize, pages: usiz
 
     // Bottom: how much of the backup drive the backups use.
     f.rect(10, 205, f.w - 20, 1, LINE);
-    ink.draw(f, Face::Icons, &I_DRIVE.to_string(), 15, 10, 229, DIM, Align::Left);
+    ink.draw(f, Face::Icons, &I_DRIVE.to_string(), 20, 10, 232, DIM, Align::Left);
     let (label, used, total) = match view.drive {
         Some((used, total)) => (format!("{} of {}", short_size(used), short_size(total)), used, total),
         None => ("no drive".to_string(), 0, 1),
     };
-    let lw = ink.width(Face::Sans, &label, 12);
-    ink.draw(f, Face::Sans, &label, 12, right, 228, DIM, Align::Right);
-    let (bx, bw) = (32, right - lw - 10 - 32);
-    f.round_rect(bx, 220, bw, 6, TRACK);
+    let lw = ink.width(Face::Sans, &label, 16);
+    ink.draw(f, Face::Sans, &label, 16, right, 229, DIM, Align::Right);
+    let (bx, bw) = (38, right - lw - 10 - 38);
+    f.round_rect(bx, 218, bw, 10, TRACK);
     let fill = (bw as f64 * used as f64 / total.max(1) as f64) as i32;
-    f.round_rect(bx, 220, fill.clamp(4, bw), 6, BAR);
+    f.round_rect(bx, 218, fill.clamp(10, bw), 10, BAR);
 }
 
 // ── The flip clock ───────────────────────────────────────────────────────────
@@ -345,7 +345,7 @@ fn show_clock(screen: &mut Screen, f: &mut Frame, ink: &mut Ink) -> Result<()> {
             cards.draw(f, ink, flip, t, x0 + i as i32 * (CARD_W + CARD_GAP));
         }
         let date = now.format("%A %-d %B").to_string();
-        ink.draw(f, Face::Sans, &date, 16, (f.w - ink.width(Face::Sans, &date, 16)) / 2, 204, DATE, Align::Left);
+        ink.draw(f, Face::Sans, &date, 22, (f.w - ink.width(Face::Sans, &date, 22)) / 2, 208, DATE, Align::Left);
         screen.show(f)?;
 
         // Smooth while a card falls, otherwise just often enough to catch the next minute.

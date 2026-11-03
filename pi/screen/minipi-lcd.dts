@@ -30,6 +30,7 @@
 		reg = <0>;
 		spi-max-frequency = <16000000>;
 		rotate = <270>;	/* upright in the case, with the ribbon leaving at the bottom edge */
+		bgr;			/* the panel takes blue first */
 		fps = <25>;
 		buswidth = <8>;
 		regwidth = <16>;		/* the shift registers take 16 bits per command */
@@ -37,4 +38,9 @@
 		dc-gpios = <&gpio 24 0>;	/* active high */
 		reset-gpios = <&gpio 25 1>;	/* active low */
 	};
+};
+
+/* The Pi's USB-C port as a host: the power splitter on it holds the backup stick. */
+&usb {
+	dr_mode = "host";
 };
