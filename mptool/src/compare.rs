@@ -187,15 +187,7 @@ fn mail_config(remote: &Remote, mail_tar: &Path, root: &Path) -> Result<Vec<(&'s
     let _ = std::fs::remove_dir_all(&tmp);
     let (mine, accounts) = mine?;
 
-    let group = |path: &str| -> &'static str {
-        if path.contains("/opendkim/") {
-            "Mail signing key (DKIM)"
-        } else if path.contains("/user-patches/") || path.ends_with("postfix-virtual.cf") {
-            "Forwards to Gmail"
-        } else {
-            "Mail accounts"
-        }
-    };
+    let group = |path: &str| mail_group(path);
     let groups = ["Mail accounts", "Forwards to Gmail", "Mail signing key (DKIM)"];
     let all: BTreeSet<&String> = mine.keys().chain(theirs.keys()).filter(|p| !p.ends_with(".db")).collect();
     let mut result = vec![];
@@ -233,24 +225,43 @@ fn sums(text: &str) -> BTreeMap<String, String> {
         .collect()
 }
 
-/// Mail messages: which mail files exist in the backup vs on the server.
-/// A message moves from new/ to cur/ and gets flags (":2,S") once read, so those are ignored.
+/// Which of the three mail settings a file in the mail settings folder belongs to.
+pub fn mail_group(path: &str) -> &'static str {
+    if path.contains("/opendkim/") {
+        "Mail signing key (DKIM)"
+    } else if path.contains("/user-patches/") || path.ends_with("postfix-virtual.cf") {
+        "Forwards to Gmail"
+    } else {
+        "Mail accounts"
+    }
+}
+
+/// What identifies a message: its account and the file name before ":2,".
+/// A message moves from new/ to cur/, between folders, and gets flags (":2,S") once read,
+/// so all of those are ignored. None for anything that isn't a message.
+pub fn mail_key(path: &str) -> Option<String> {
+    let parts: Vec<&str> = path.split('/').collect();
+    if parts.len() < 6 || parts[0] != "var" || parts[1] != "mail" || path.ends_with('/') {
+        return None;
+    }
+    let folder = parts[parts.len() - 2];
+    if !(folder == "cur" || folder == "new") || parts[4] == "home" {
+        return None;
+    }
+    let name = parts[parts.len() - 1];
+    Some(format!("{}/{}/{}", parts[2], parts[3], name.split(":2,").next().unwrap_or(name)))
+}
+
+/// Mail messages: which messages exist in the backup vs on the server.
 fn mail_messages(remote: &Remote, mail_tar: &Path) -> Result<(String, bool)> {
-    let key = |p: &str| -> Option<String> {
-        if !(p.contains("/cur/") || p.contains("/new/")) || p.ends_with('/') {
-            return None;
-        }
-        let p = p.replace("/cur/", "/").replace("/new/", "/");
-        Some(p.split(':').next().unwrap_or(&p).to_string())
-    };
-    let mine: BTreeSet<String> = tar_list(mail_tar)?.iter().filter_map(|p| key(p)).collect();
-    let theirs: BTreeSet<String> = remote.run(MAIL_FILES)?.lines().filter_map(key).collect();
+    let mine: BTreeSet<String> = tar_list(mail_tar)?.iter().filter_map(|p| mail_key(p)).collect();
+    let theirs: BTreeSet<String> = remote.run(MAIL_FILES)?.lines().filter_map(mail_key).collect();
     let new = theirs.difference(&mine).count();
     let gone = mine.difference(&theirs).count();
     Ok(words(new, 0, gone, || format!("same ({} messages)", mine.len())))
 }
 
-fn dir_names(dir: &Path) -> Vec<String> {
+pub fn dir_names(dir: &Path) -> Vec<String> {
     let mut v: Vec<String> = std::fs::read_dir(dir)
         .into_iter()
         .flatten()

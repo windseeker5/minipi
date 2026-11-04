@@ -66,6 +66,7 @@ Settings (all optional) are at the end of `mptool/config.example.toml`.
 | Run a backup now | `ssh minipi mptool run` |
 | Check the sites now | `ssh minipi mptool monitor` |
 | Get the newest mptool from GitHub | `ssh minipi '~/minipi/pi/update.sh'` |
+| Put something back on the server | See `RECOVERY.md`. Locked until `restore_enabled` is on |
 
 If `ssh minipi` doesn't work (it can lag a day after switching to Wi-Fi), use `ssh minipi.local`,
 or the address on the little screen, e.g. `ssh 192.168.1.50`.
@@ -83,6 +84,7 @@ or the address on the little screen, e.g. `ssh 192.168.1.50`.
 | `pi/wifi.sh` | Pi | Puts the Pi on Wi-Fi, or changes the network |
 | `pi/terminal.sh` | Pi | Your terminal from the dotfiles: zsh, Neovim, lazygit, fzf, nnn... |
 | `mptool/` | | The Minipass tool (Rust): backup, monitoring, screen |
+| `testing/` | | A fake VPS on the laptop, where every restore is tested |
 
 Secrets (the Discord link, server keys) never go in this repo. They live only in
 `~/.config/mptool/config.toml` on the laptop and on the Pi.

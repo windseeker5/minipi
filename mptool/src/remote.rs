@@ -1,5 +1,5 @@
-//! Talking to the VPS. Every command here only reads from the server,
-//! except the temporary DB copies in /tmp/mptool.* which we remove ourselves.
+//! Talking to the VPS. The backup and Compare only read from the server (and make temporary DB
+//! copies in /tmp/mptool.*, which they remove). Only restore.rs writes, through `push` and `run_input`.
 
 use crate::config::Config;
 use anyhow::{bail, Context, Result};
@@ -11,17 +11,19 @@ use std::process::{Command, Stdio};
 pub struct Remote {
     server: String,
     port: u16,
+    extra_ssh: Vec<String>,
     pub base: String,
 }
 
 impl Remote {
     pub fn new(cfg: &Config) -> Remote {
-        Remote { server: cfg.server.clone(), port: cfg.port, base: cfg.remote_base.clone() }
+        Remote { server: cfg.server.clone(), port: cfg.port, extra_ssh: cfg.ssh_options.clone(), base: cfg.remote_base.clone() }
     }
 
     /// One shared SSH connection for the whole run, so the server sees a single login.
     fn ssh_opts(&self) -> Vec<String> {
-        vec![
+        let mut opts = self.extra_ssh.clone();
+        opts.extend([
             "-p".into(),
             self.port.to_string(),
             "-o".into(),
@@ -34,7 +36,12 @@ impl Remote {
             "ControlPath=/tmp/mptool-ssh-%C".into(),
             "-o".into(),
             "ControlPersist=120".into(),
-        ]
+            "-o".into(),
+            "ServerAliveInterval=5".into(),
+            "-o".into(),
+            "ServerAliveCountMax=3".into(),
+        ]);
+        opts
     }
 
     /// Run a shell command on the server and return its output.
@@ -112,6 +119,22 @@ impl Remote {
             .context("cannot start rsync")?;
         if !out.status.success() {
             bail!("rsync {} failed: {}", remote, String::from_utf8_lossy(&out.stderr).trim());
+        }
+        Ok(())
+    }
+
+    /// Copy a local file or folder to an absolute path on the server. Only restores do this.
+    pub fn push(&self, local: &Path, remote: &str) -> Result<()> {
+        let out = Command::new("rsync")
+            .arg("-a")
+            .arg("-e")
+            .arg(format!("ssh {}", self.ssh_opts().join(" ")))
+            .arg(local)
+            .arg(format!("{}:{}", self.server, remote))
+            .output()
+            .context("cannot start rsync")?;
+        if !out.status.success() {
+            bail!("rsync to {} failed: {}", remote, String::from_utf8_lossy(&out.stderr).trim());
         }
         Ok(())
     }

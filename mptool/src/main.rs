@@ -4,6 +4,7 @@ mod menu;
 mod monitor;
 mod notify;
 mod remote;
+mod restore;
 mod retention;
 mod run;
 mod screen;
@@ -17,6 +18,16 @@ const USAGE: &str = "Usage:
   mptool               open the menu
   mptool run           run the backup now (the nightly timer calls this)
   mptool status        show the last backup and the nights on disk
+  mptool compare [--night DATE]
+                       show what differs between a backup and the server (changes nothing)
+  mptool restore customer <name> [--night DATE]
+  mptool restore mail <settings|messages> [--only accounts,forwards,dkim] [--night DATE]
+  mptool restore website [--night DATE]
+  mptool restore server [--night DATE]
+  mptool restore everything [--night DATE]
+  mptool restore undo
+  mptool restore status
+                       put things back; add --confirm <text> to answer the confirm question
   mptool monitor       check every customer's login page (the 15-minute timer calls this)
   mptool screen        show the logo and the status on the Pi's little screen
   mptool test-discord  send a test message to the Discord channel";
@@ -59,6 +70,8 @@ fn main() -> ExitCode {
             status::print(&cfg.root());
             ExitCode::SUCCESS
         }
+        Some("compare") => restore::compare_cli(&cfg, &std::env::args().skip(2).collect::<Vec<_>>()),
+        Some("restore") => restore::cli(&cfg, &std::env::args().skip(2).collect::<Vec<_>>()),
         Some("monitor") => match monitor::run(&cfg) {
             Ok(()) => ExitCode::SUCCESS,
             Err(e) => {

@@ -1,0 +1,5 @@
+# The only things kdresdell may do as root on the fake VPS: put the website's service in place and restart it.
+kdresdell ALL=(root) NOPASSWD: /usr/bin/systemctl restart minipass-web
+kdresdell ALL=(root) NOPASSWD: /usr/bin/systemctl enable minipass-web
+kdresdell ALL=(root) NOPASSWD: /usr/bin/systemctl daemon-reload
+kdresdell ALL=(root) NOPASSWD: /usr/bin/install -m 644 -o root -g root /home/kdresdell/mptool-undo/*/minipass-web.service /etc/systemd/system/minipass-web.service

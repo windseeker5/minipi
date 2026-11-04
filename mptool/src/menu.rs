@@ -1,9 +1,11 @@
 //! The menu (`mptool` with no arguments): one dashboard screen, actions open in pop-ups.
-//! Everything here only reads from the server. Restores come later and will be the only writers.
+//! Only the two Restore pop-ups change the server, through restore.rs, after a typed confirm.
+//! Everything else here only reads.
 
 use crate::compare::{self, Line as CmpLine};
 use crate::config::Config;
 use crate::notify;
+use crate::restore::{self, Job, Prepared, Report, What, MAIL_PARTS};
 use crate::run::{self, human, Event};
 use crate::status::{nights, Status, Step};
 use crate::unpack;
@@ -39,10 +41,10 @@ const SPIN: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧"
 const GUIDE: &[&str] = &[
     "1  Take a Hetzner snapshot first, even of a broken server.",
     "2  Press c (Compare) to see what changed since the backup.",
-    "3  One customer lost data:   Restore a customer.",
-    "4  Mail, keys or forwards broken:   Restore setup.",
-    "5  Whole server gone:   new server from the Hetzner snapshot,",
-    "   then Restore setup and each customer from last night.",
+    "3  One customer lost data:   r  Restore a customer.",
+    "4  Mail, website or server settings broken:   s  Restore setup.",
+    "5  Whole server gone:   new server, then  s  Everything.",
+    "   Every restore saves an undo copy first:   s  Undo the last restore.",
     "",
     "Never on the server:  git reset --hard,  docker image prune,",
     "docker-compose pull  (unless you are upgrading on purpose).",
@@ -68,7 +70,44 @@ enum Msg {
     BackupEnd(Result<Status, String>, Option<String>),
     Compared(Result<Vec<CmpLine>, String>),
     Unpacked(Result<String, String>),
+    RestoreReady(Result<Prepared, String>),
+    Restore(Event),
+    RestoreEnd(Result<Report, String>),
 }
+
+#[derive(Clone, Copy, PartialEq, Default)]
+enum Stage {
+    /// Picking what to restore.
+    #[default]
+    Pick,
+    /// Checking the backup and making the preview.
+    Checking,
+    /// Showing the preview, waiting for the typed confirm.
+    Confirm,
+    Running,
+    Done,
+}
+
+/// What the Restore pop-ups show. `r` lists customers, `s` lists the rest of the setup.
+#[derive(Default)]
+struct RestoreUi {
+    setup: bool,
+    choices: Vec<String>,
+    cursor: usize,
+    /// Which mail settings to put back, in the order of MAIL_PARTS.
+    mail: [bool; 3],
+    stage: Stage,
+    prepared: Option<std::sync::Arc<Prepared>>,
+    typed: String,
+    snapshot: bool,
+    log: Vec<String>,
+    steps: Vec<Step>,
+    error: Option<String>,
+    report: Option<Report>,
+}
+
+const SETUP_CHOICES: [&str; 6] =
+    ["Mail settings", "Mail messages (adds back what's missing)", "Website", "Server settings", "Everything (blank server)", "Undo the last restore"];
 
 #[derive(Default)]
 struct Backup {
@@ -80,7 +119,7 @@ struct Backup {
 }
 
 /// A slower job (compare, unpack): which night, and its result once finished.
-struct Job<T> {
+struct SlowJob<T> {
     night: String,
     result: Option<Result<T, String>>,
 }
@@ -93,8 +132,9 @@ struct App {
     table: TableState,
     pop: Option<Pop>,
     backup: Backup,
-    compare: Option<Job<Vec<CmpLine>>>,
-    unpack: Option<Job<String>>,
+    compare: Option<SlowJob<Vec<CmpLine>>>,
+    unpack: Option<SlowJob<String>>,
+    restore: RestoreUi,
     scroll: u16,
     note: Option<String>,
     tick: usize,
@@ -123,6 +163,7 @@ impl App {
             backup: Backup::default(),
             compare: None,
             unpack: None,
+            restore: RestoreUi::default(),
             scroll: 0,
             note: None,
             tick: 0,
@@ -207,14 +248,53 @@ impl App {
                     job.result = Some(r);
                 }
             }
+            Msg::RestoreReady(Ok(p)) => {
+                self.restore.prepared = Some(std::sync::Arc::new(p));
+                self.restore.stage = Stage::Confirm;
+            }
+            Msg::RestoreReady(Err(e)) => {
+                self.restore.error = Some(e);
+                self.restore.stage = Stage::Done;
+            }
+            Msg::Restore(Event::Log(line)) => self.restore.log.push(line),
+            Msg::Restore(Event::Done(step)) => self.restore.steps.push(step),
+            Msg::Restore(_) => {}
+            Msg::RestoreEnd(r) => {
+                match r {
+                    Ok(report) => self.restore.report = Some(report),
+                    Err(e) => self.restore.error = Some(e),
+                }
+                self.restore.stage = Stage::Done;
+                self.load();
+            }
         }
     }
 
     fn on_key(&mut self, code: KeyCode, mods: KeyModifiers) {
         self.note = None;
+        // The confirm box takes every letter, so nothing typed there can open or quit anything.
+        if self.pop == Some(Pop::Restore) && self.restore.stage == Stage::Confirm {
+            match code {
+                KeyCode::Esc => {
+                    self.restore.stage = Stage::Pick;
+                    self.restore.prepared = None;
+                    self.restore.typed.clear();
+                    self.restore.snapshot = false;
+                }
+                KeyCode::Enter => self.confirm_restore(),
+                KeyCode::Backspace => {
+                    self.restore.typed.pop();
+                }
+                KeyCode::Char(c) => self.restore.typed.push(c),
+                _ => {}
+            }
+            return;
+        }
         if code == KeyCode::Char('q') || (code == KeyCode::Char('c') && mods.contains(KeyModifiers::CONTROL)) {
             if self.backup.running {
                 self.note = Some("A backup is running. Wait for it to finish, then quit.".into());
+            } else if self.restore.stage == Stage::Running {
+                self.note = Some("A restore is running. Wait for it to finish, then quit.".into());
             } else {
                 self.quit = true;
             }
@@ -227,8 +307,26 @@ impl App {
             KeyCode::Enter => match self.pop {
                 Some(Pop::Backup) => self.start_backup(),
                 Some(Pop::Unpack) => self.start_unpack(),
+                Some(Pop::Restore) if self.restore.stage == Stage::Pick => self.start_restore(),
+                Some(Pop::Restore) if self.restore.stage == Stage::Done => self.restore.stage = Stage::Pick,
                 _ => {}
             },
+            _ if (up || down) && self.pop == Some(Pop::Restore) => {
+                if self.restore.stage == Stage::Pick {
+                    let last = self.restore.choices.len().saturating_sub(1);
+                    let at = self.restore.cursor;
+                    self.restore.cursor = if up { at.saturating_sub(1) } else { (at + 1).min(last) };
+                }
+            }
+            KeyCode::Char(k @ ('a' | 'f' | 'd'))
+                if self.pop == Some(Pop::Restore)
+                    && self.restore.setup
+                    && self.restore.stage == Stage::Pick
+                    && self.restore.cursor == 0 =>
+            {
+                let i = "afd".find(k).unwrap_or(0);
+                self.restore.mail[i] = !self.restore.mail[i];
+            }
             _ if (up || down) && self.pop == Some(Pop::Compare) => {
                 self.scroll = if up { self.scroll.saturating_sub(1) } else { self.scroll + 1 };
             }
@@ -246,7 +344,8 @@ impl App {
                 }
             }
             KeyCode::Char('g') => self.pop = Some(Pop::Guide),
-            KeyCode::Char('r') | KeyCode::Char('s') => self.pop = Some(Pop::Restore),
+            KeyCode::Char('r') => self.open_restore(false),
+            KeyCode::Char('s') => self.open_restore(true),
             _ => {}
         }
     }
@@ -270,6 +369,81 @@ impl App {
         });
     }
 
+    fn open_restore(&mut self, setup: bool) {
+        self.pop = Some(Pop::Restore);
+        if matches!(self.restore.stage, Stage::Running | Stage::Checking) {
+            return; // the one that's going on stays on screen
+        }
+        let choices = if setup {
+            SETUP_CHOICES.iter().map(|c| c.to_string()).collect()
+        } else {
+            self.night().and_then(|n| n.status.as_ref()).map(|s| s.customers.clone()).unwrap_or_default()
+        };
+        self.restore = RestoreUi { setup, choices, mail: [true; 3], ..Default::default() };
+    }
+
+    /// The same job the command line would make from what's picked on screen.
+    fn picked_job(&self) -> Option<Job> {
+        let r = &self.restore;
+        let what = if r.setup {
+            match r.cursor {
+                0 => What::MailSettings(
+                    MAIL_PARTS.iter().zip(r.mail).filter(|(_, on)| *on).map(|(p, _)| p.to_string()).collect(),
+                ),
+                1 => What::MailMessages,
+                2 => What::Website,
+                3 => What::Server,
+                4 => What::Everything,
+                _ => What::Undo,
+            }
+        } else {
+            What::Customer(r.choices.get(r.cursor)?.clone())
+        };
+        if matches!(&what, What::MailSettings(parts) if parts.is_empty()) {
+            return None;
+        }
+        Some(Job { what, night: self.night().map(|n| n.date.clone()) })
+    }
+
+    fn start_restore(&mut self) {
+        let Some(job) = self.picked_job() else { return };
+        self.restore.stage = Stage::Checking;
+        self.restore.error = None;
+        self.restore.report = None;
+        self.restore.log.clear();
+        self.restore.steps.clear();
+        let (cfg, tx) = (self.cfg.clone(), self.tx.clone());
+        std::thread::spawn(move || {
+            let _ = tx.send(Msg::RestoreReady(restore::prepare(&cfg, &job).map_err(|e| format!("{e:#}"))));
+        });
+    }
+
+    fn confirm_restore(&mut self) {
+        let Some(p) = self.restore.prepared.clone() else { return };
+        // The real server asks about the snapshot first, in the same box.
+        if p.real_vps && !self.restore.snapshot {
+            if self.restore.typed.trim() == "yes" {
+                self.restore.snapshot = true;
+            } else {
+                self.restore.error = Some("Take a Hetzner snapshot first. Nothing was changed.".into());
+                self.restore.stage = Stage::Done;
+            }
+            self.restore.typed.clear();
+            return;
+        }
+        let typed = std::mem::take(&mut self.restore.typed);
+        let snapshot = self.restore.snapshot;
+        self.restore.stage = Stage::Running;
+        let (cfg, tx) = (self.cfg.clone(), self.tx.clone());
+        std::thread::spawn(move || {
+            let on = |e| {
+                let _ = tx.send(Msg::Restore(e));
+            };
+            let res = restore::execute_and_report(&cfg, &p, &typed, snapshot, &on);
+            let _ = tx.send(Msg::RestoreEnd(res.map_err(|e| format!("{e:#}"))));
+        });
+    }
+
     fn start_compare(&mut self) {
         if self.compare.as_ref().is_some_and(|j| j.result.is_none()) {
             return; // already comparing
@@ -279,7 +453,7 @@ impl App {
             return;
         };
         let (cfg, tx, path) = (self.cfg.clone(), self.tx.clone(), n.path.clone());
-        self.compare = Some(Job { night: n.date.clone(), result: None });
+        self.compare = Some(SlowJob { night: n.date.clone(), result: None });
         self.scroll = 0;
         std::thread::spawn(move || {
             let _ = tx.send(Msg::Compared(compare::compare(&cfg, &path).map_err(|e| format!("{e:#}"))));
@@ -292,7 +466,7 @@ impl App {
         }
         let Some(n) = self.night() else { return };
         let (tx, path, dest) = (self.tx.clone(), n.path.clone(), unpack::dest_for(&n.date));
-        self.unpack = Some(Job { night: n.date.clone(), result: None });
+        self.unpack = Some(SlowJob { night: n.date.clone(), result: None });
         std::thread::spawn(move || {
             let _ = tx.send(Msg::Unpacked(unpack::unpack(&path, &dest).map_err(|e| format!("{e:#}"))));
         });
@@ -438,7 +612,7 @@ impl App {
         let w = area.width.saturating_sub(4).min(90);
         let h = area.height.saturating_sub(2).min(match p {
             Pop::Compare => 34,
-            Pop::Backup => 26,
+            Pop::Backup | Pop::Restore => 26,
             _ => 18,
         });
         let rect = area.centered(Constraint::Length(w), Constraint::Length(h));
@@ -452,7 +626,7 @@ impl App {
             },
             Pop::Unpack => ("Unpack a night on this computer".into(), ACC),
             Pop::Guide => ("Emergency guide".into(), ACC),
-            Pop::Restore => ("Restore".into(), MAG),
+            Pop::Restore => ((if self.restore.setup { "Restore setup" } else { "Restore a customer" }).to_string(), MAG),
         };
         let block = panel(&title, color);
         let inner = block.inner(rect).inner(ratatui::layout::Margin::new(1, 1));
@@ -464,6 +638,14 @@ impl App {
             Pop::Backup => "Enter to start     Esc to close",
             Pop::Compare => "c to compare again     ↑↓ scroll     Esc to close",
             Pop::Unpack if self.unpack.is_none() => "↑↓ pick a night     Enter to unpack     Esc to close",
+            Pop::Restore => match self.restore.stage {
+                Stage::Pick if self.restore.setup && self.restore.cursor == 0 => "↑↓ pick     a f d  choose settings     Enter to preview     Esc to close",
+                Stage::Pick => "↑↓ pick     Enter to preview (changes nothing)     Esc to close",
+                Stage::Checking => "Checking the backup...",
+                Stage::Confirm => "Type it, then Enter     Esc to go back (nothing has changed)",
+                Stage::Running => "Esc to hide (the restore keeps going)",
+                Stage::Done => "Enter to pick again     Esc to close",
+            },
             _ => "Esc to close",
         };
         f.render_widget(Line::styled(foot_text, Style::new().fg(DIM)), foot);
@@ -483,17 +665,97 @@ impl App {
                 ]));
                 f.render_widget(Paragraph::new(lines), body);
             }
-            Pop::Restore => {
-                let lines = vec![
-                    Line::raw(""),
-                    Line::styled("Restores are the next step.", Style::new().fg(MAG).bold()),
-                    Line::raw(""),
-                    Line::raw("They get built after you approve this menu, and are tested on demo first."),
-                    Line::raw("Until then, this tool never changes anything on the server."),
-                ];
-                f.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), body);
-            }
+            Pop::Restore => self.draw_restore(f, body),
         }
+    }
+
+    fn draw_restore(&self, f: &mut Frame, area: Rect) {
+        let dim = Style::new().fg(DIM);
+        let r = &self.restore;
+        let night = self.night().map(|n| n.date.clone()).unwrap_or_else(|| "none".into());
+        let mut lines = vec![];
+        match r.stage {
+            Stage::Pick => {
+                lines.push(Line::from(vec![Span::styled("From the night of  ", dim), Span::styled(night, Style::new().bold())]));
+                lines.push(Line::styled("Pick another night with ↑↓ on the main screen, before opening this.", dim));
+                lines.push(Line::raw(""));
+                if r.choices.is_empty() {
+                    lines.push(Line::styled("This night holds no customers.", dim));
+                }
+                for (i, c) in r.choices.iter().enumerate() {
+                    let here = i == r.cursor;
+                    let listed = r.setup || self.cfg.restore_allowed.contains(c);
+                    let color = if here { MAG } else if listed { FG } else { DIM };
+                    let note = if listed { "" } else { "   (not on restore_allowed)" };
+                    lines.push(Line::styled(format!("{} {c}{note}", if here { ">" } else { " " }), Style::new().fg(color)));
+                    if r.setup && i == 0 {
+                        let boxes: Vec<String> = ["a accounts", "f forwards", "d DKIM key"]
+                            .iter()
+                            .zip(r.mail)
+                            .map(|(name, on)| format!("[{}] {name}", if on { "x" } else { " " }))
+                            .collect();
+                        lines.push(Line::styled(format!("    {}", boxes.join("   ")), dim));
+                    }
+                }
+                lines.push(Line::raw(""));
+                if !self.cfg.restore_enabled {
+                    lines.push(Line::styled("Restore is off: restore_enabled is false in the config.", Style::new().fg(WARN)));
+                }
+            }
+            Stage::Checking => {
+                lines.push(Line::styled(format!("{} Checking the backup and comparing...", SPIN[self.tick % SPIN.len()]), Style::new().fg(WARN)));
+            }
+            Stage::Confirm => {
+                let Some(p) = &r.prepared else { return };
+                let from = if p.night.is_empty() { String::new() } else { format!(" from {}", p.night) };
+                lines.push(Line::styled(format!("Restore {}{from}", p.job.what.label()), Style::new().fg(CYAN).bold()));
+                lines.push(Line::styled("What differs now. Nothing has changed yet.", dim));
+                lines.push(Line::raw(""));
+                lines.extend(p.preview.iter().map(|l| Line::raw(format!("  {l}"))));
+                lines.push(Line::raw(""));
+                let question = if p.real_vps && !r.snapshot {
+                    "This is the real server. Did you take a Hetzner snapshot? Type yes:".to_string()
+                } else {
+                    format!("Type {} to go ahead:", p.job.what.confirm_word())
+                };
+                lines.push(Line::styled(question, Style::new().fg(MAG).bold()));
+                lines.push(Line::from(vec![Span::raw("> "), Span::styled(format!("{}█", r.typed), Style::new().bold())]));
+            }
+            Stage::Running | Stage::Done => return self.draw_restore_progress(f, area),
+        }
+        // A long preview scrolls, so the question at the end stays on screen.
+        let scroll = rows(&lines, area.width).saturating_sub(area.height);
+        f.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }).scroll((scroll, 0)), area);
+    }
+
+    /// The newest log lines on top, and under them the results, which must never scroll away.
+    fn draw_restore_progress(&self, f: &mut Frame, area: Rect) {
+        let r = &self.restore;
+        let mut results = vec![];
+        for s in &r.steps {
+            let (mark, color) = if s.ok { ("done", OK) } else { ("FAIL", BAD) };
+            results.push(Line::from(vec![
+                Span::styled(format!("{mark}  "), Style::new().fg(color).bold()),
+                Span::raw(format!("{}: ", s.name)),
+                Span::styled(s.detail.clone(), Style::new().fg(if s.ok { DIM } else { BAD })),
+            ]));
+        }
+        if r.stage == Stage::Running {
+            results.push(Line::styled(format!("{} Working...", SPIN[self.tick % SPIN.len()]), Style::new().fg(WARN)));
+        }
+        if let Some(report) = &r.report {
+            let (text, color) = if report.ok() { ("OK", OK) } else { ("FAILED", BAD) };
+            results.push(Line::styled(format!("Restore of {} {text}. Took {}.", report.label, report.took()), Style::new().fg(color).bold()));
+        }
+        if let Some(e) = &r.error {
+            results.push(Line::styled(format!("Refused or stopped: {e}"), Style::new().fg(BAD).bold()));
+        }
+        let [top, bottom] =
+            Layout::vertical([Constraint::Fill(1), Constraint::Length(rows(&results, area.width).min(area.height))]).areas(area);
+        let skip = r.log.len().saturating_sub(top.height as usize);
+        let log: Vec<Line> = r.log[skip..].iter().map(|l| Line::styled(l.clone(), Style::new().fg(DIM))).collect();
+        f.render_widget(Paragraph::new(log), top);
+        f.render_widget(Paragraph::new(results).wrap(Wrap { trim: false }), bottom);
     }
 
     fn draw_backup(&self, f: &mut Frame, area: Rect) {
@@ -635,14 +897,19 @@ impl App {
         lines.push(match &self.unpack {
             None if dest.exists() => Line::styled("Already unpacked there.", Style::new().fg(WARN)),
             None => Line::styled("Mail and certificates are unpacked too, ready to read.", dim),
-            Some(Job { result: None, .. }) => {
+            Some(SlowJob { result: None, .. }) => {
                 Line::styled(format!("{} Unpacking...", SPIN[self.tick % SPIN.len()]), Style::new().fg(WARN))
             }
-            Some(Job { result: Some(Ok(msg)), .. }) => Line::styled(msg.clone(), Style::new().fg(OK).bold()),
-            Some(Job { result: Some(Err(e)), .. }) => Line::styled(e.clone(), Style::new().fg(BAD)),
+            Some(SlowJob { result: Some(Ok(msg)), .. }) => Line::styled(msg.clone(), Style::new().fg(OK).bold()),
+            Some(SlowJob { result: Some(Err(e)), .. }) => Line::styled(e.clone(), Style::new().fg(BAD)),
         });
         f.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), area);
     }
+}
+
+/// About how many screen rows these lines take once wrapped.
+fn rows(lines: &[Line], width: u16) -> u16 {
+    lines.iter().map(|l| (l.width() as u16 / width.max(1)) + 1).sum()
 }
 
 /// A bordered card with a rounded frame and its title set into the top line: ╭─ Title ───╮

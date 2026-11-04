@@ -32,6 +32,30 @@ pub struct Config {
     /// The little screen's brightness, in percent (its light can't be turned down, the colors can).
     #[serde(default = "screen_brightness")]
     pub screen_brightness: u8,
+    /// Extra ssh options, for a server that needs its own key or known hosts file.
+    #[serde(default)]
+    pub ssh_options: Vec<String>,
+    /// Lock: nothing is ever put back while this is false.
+    #[serde(default)]
+    pub restore_enabled: bool,
+    /// Second lock, for the real server only. Only Ken turns this on.
+    #[serde(default)]
+    pub real_vps_ok: bool,
+    /// Where a restore gets the code when it's gone from the server.
+    #[serde(default = "repo_env")]
+    pub repo_env: String,
+    #[serde(default = "repo_app")]
+    pub repo_app: String,
+    /// The website's page, checked after a restore. Empty text means any 200 answer will do.
+    #[serde(default = "website_url")]
+    pub website_url: String,
+    #[serde(default)]
+    pub website_expect: String,
+    /// A mail account used to check the IMAP login after a restore. Empty: no login is tried.
+    #[serde(default)]
+    pub mail_check_user: String,
+    #[serde(default)]
+    pub mail_check_password: String,
 }
 
 impl Config {
@@ -70,6 +94,18 @@ impl Config {
 
 fn yes() -> bool {
     true
+}
+
+fn repo_env() -> String {
+    "git@github.com:windseeker5/minipass_env.git".into()
+}
+
+fn repo_app() -> String {
+    "git@github.com:windseeker5/dpm.git".into()
+}
+
+fn website_url() -> String {
+    "https://minipass.me/".into()
 }
 
 fn monitor_url() -> String {

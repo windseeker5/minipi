@@ -14,8 +14,26 @@ discord_webhook = ""
 # Also post a short "backup OK" every morning. If that message is missing, the backup did not run.
 discord_daily_ok = true
 
-# Customers the "Restore a customer" menu is allowed to touch.
+# Restores change the server, so they are locked. restore_enabled must be true for any restore.
+# On the real server real_vps_ok must be true too, and only Ken ever turns that on.
+restore_enabled = false
+real_vps_ok = false
+
+# Customers a restore is allowed to touch.
 restore_allowed = ["demo"]
+
+# Where a restore gets the code when it's gone from the server. These are the defaults.
+# repo_env = "git@github.com:windseeker5/minipass_env.git"
+# repo_app = "git@github.com:windseeker5/dpm.git"
+
+# The website's page, checked after a restore. Empty text: any 200 answer will do. These are the defaults.
+# website_url = "https://minipass.me/"
+# website_expect = ""
+
+# A mail account a restore can log in with, to check IMAP afterwards. Empty: no login is tried.
+# Pick one whose password won't change, or the check fails and the restore rolls back.
+# mail_check_user = ""
+# mail_check_password = ""
 
 # Site monitoring (mptool monitor, every 15 minutes on the Pi). These are the defaults.
 # monitor_url = "https://{customer}.minipass.me/login"

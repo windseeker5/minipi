@@ -16,6 +16,8 @@ const IMAGES: &str = r#"docker ps --format '{{.Names}}  {{.Image}}  {{.ID}}' && 
 const MAIL_TAR: &str = "docker exec mailserver tar cf - -C / var/mail var/mail-state tmp/docker-mailserver";
 const CERTS_TAR: &str = "docker exec nginx-letsencrypt tar cf - -C /etc nginx/certs acme.sh";
 
+pub const SERVICE_FILE: &str = "/etc/systemd/system/minipass-web.service";
+
 /// Server files and folders copied as-is: (path on server, path in the night folder).
 pub const SERVER_FILES: &[(&str, &str)] = &[
     ("docker-compose.yml", "server/docker-compose.yml"),
@@ -71,16 +73,22 @@ impl Run<'_> {
     }
 }
 
+/// The one lock backups and restores share. Held until the returned file is dropped.
+pub fn take_lock(root: &Path) -> Result<std::fs::File> {
+    let lock = std::fs::File::create(root.join(".lock"))?;
+    if lock.try_lock().is_err() {
+        bail!("another backup or restore is already running");
+    }
+    Ok(lock)
+}
+
 pub fn run(cfg: &Config, on: &dyn Fn(Event)) -> Result<Status> {
     let root = cfg.root();
     std::fs::create_dir_all(&root).with_context(|| format!("cannot create {}", root.display()))?;
     // The backups hold passwords and keys: only this user may read them.
     std::fs::set_permissions(&root, std::os::unix::fs::PermissionsExt::from_mode(0o700))?;
-    // The timer and the menu could start a backup at the same time: only one may run.
-    let lock = std::fs::File::create(root.join(".lock"))?;
-    if lock.try_lock().is_err() {
-        bail!("another backup is already running");
-    }
+    // The timer, the menu and a restore could start at the same time: only one may run.
+    let _lock = take_lock(&root)?;
     let night = Local::now().format("%Y-%m-%d").to_string();
     on(Event::Log(format!("Minipass backup {night} -> {}", root.display())));
 
@@ -116,7 +124,14 @@ pub fn run(cfg: &Config, on: &dyn Fn(Event)) -> Result<Status> {
         on,
     };
 
-    if !r.step("Connect to server", || remote.run("true").map(|_| cfg.server.clone())) {
+    let connected = r.step("Connect to server", || {
+        // A restore keeps running on the server even when the tool that started it is gone.
+        if !remote.run(crate::restore::RUNNING)?.trim().is_empty() {
+            bail!("a restore is still running on the server");
+        }
+        Ok(cfg.server.clone())
+    });
+    if !connected {
         std::fs::remove_dir_all(&work)?;
         return finish(r.status, &root, None, on);
     }

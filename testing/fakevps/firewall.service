@@ -1,0 +1,13 @@
+[Unit]
+Description=fake VPS firewall: no mail and no real VPS, ever
+DefaultDependencies=no
+After=local-fs.target
+Before=network-pre.target docker.service ssh.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/fakevps-firewall
+
+[Install]
+WantedBy=multi-user.target
