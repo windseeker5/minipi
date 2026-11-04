@@ -26,3 +26,9 @@ Short notes: what failed, why, what fixed it.
 - T4, first clean pass: `check-for-changes.sh.lock` showed up as a changed mail setting. It's the mail server's own short-lived
   lock in the settings folder. A restore could have put a stale one back and deleted a live one. Restore and Compare now leave it
   alone, a unit test covers it, and only then did the test's fingerprint stop counting it.
+
+## Finish line
+
+Commit d6643c4, each pass from a clean rebuild: 20 of 20 restore tests, 18 of 18 `cargo test` with no network, no build warnings,
+twice in a row. Whole-server restore: 68 s both times. (One "PASS 1 FAILED" line along the way was my own wrapper reading the exit
+code the bash way in zsh. That pass was 20 of 20, and pass 2 was run again with a proper exit code.)
