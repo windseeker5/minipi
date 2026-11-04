@@ -359,9 +359,14 @@ fn setting_part(group: &str) -> &'static str {
     }
 }
 
+/// The mail server's own lock file sometimes sits in the settings folder. It isn't a setting.
+fn is_setting(name: &str) -> bool {
+    name.strip_prefix("tmp/docker-mailserver/").is_some_and(|rest| !rest.is_empty()) && !name.ends_with(".lock")
+}
+
 /// Mail files that a whole-server restore puts back: everything except mail waiting to be sent.
 fn full_mail_keeps(name: &str) -> bool {
-    (name.starts_with("var/mail/") || name.starts_with("var/mail-state/") || name.starts_with("tmp/docker-mailserver/"))
+    (name.starts_with("var/mail/") || name.starts_with("var/mail-state/") || is_setting(name))
         && !name.starts_with("var/mail-state/spool-postfix")
 }
 
@@ -610,8 +615,7 @@ fn customer_part(cfg: &Config, night: &Path, c: &str, rollback: bool) -> Part {
 fn mail_settings_part(night: &Path, tmp: &Path, parts: &[String]) -> Result<Part> {
     let tar = tmp.join("settings.tar");
     tar_filter(&night.join("mail/mail.tar"), &tar, &|name| {
-        name.strip_prefix("tmp/docker-mailserver/")
-            .is_some_and(|rest| !rest.is_empty() && parts.iter().any(|p| p == setting_part(mail_group(name))))
+        is_setting(name) && parts.iter().any(|p| p == setting_part(mail_group(name)))
     })?;
     Ok(Part {
         id: "mail-settings".into(),
@@ -1384,7 +1388,7 @@ cd /tmp/docker-mailserver || exit 1
 sel() {
     for p in $PARTS; do
         case $p in
-            accounts) find . -mindepth 1 -maxdepth 1 ! -name opendkim ! -name user-patches ! -name postfix-virtual.cf ;;
+            accounts) find . -mindepth 1 -maxdepth 1 ! -name opendkim ! -name user-patches ! -name postfix-virtual.cf ! -name '*.lock' ;;
             forwards) find . -mindepth 1 -maxdepth 1 \( -name user-patches -o -name postfix-virtual.cf \) ;;
             dkim) find . -mindepth 1 -maxdepth 1 -name opendkim ;;
         esac
@@ -1820,6 +1824,9 @@ mod tests {
         assert!(full_mail_keeps("var/mail/d/u/cur/1"));
         assert!(full_mail_keeps("var/mail-state/lib-dovecot/x"));
         assert!(full_mail_keeps("tmp/docker-mailserver/postfix-accounts.cf"));
+        assert!(!full_mail_keeps("tmp/docker-mailserver/check-for-changes.sh.lock"));
+        assert!(!is_setting("tmp/docker-mailserver/check-for-changes.sh.lock"));
+        assert!(!is_setting("tmp/docker-mailserver/"));
         assert!(!full_mail_keeps("var/mail-state/spool-postfix/deferred/A/123"));
         assert!(!full_mail_keeps("var/mail-state/spool-postfix/"));
     }

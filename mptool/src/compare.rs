@@ -189,7 +189,7 @@ fn mail_config(remote: &Remote, mail_tar: &Path, root: &Path) -> Result<Vec<(&'s
 
     let group = |path: &str| mail_group(path);
     let groups = ["Mail accounts", "Forwards to Gmail", "Mail signing key (DKIM)"];
-    let all: BTreeSet<&String> = mine.keys().chain(theirs.keys()).filter(|p| !p.ends_with(".db")).collect();
+    let all: BTreeSet<&String> = mine.keys().chain(theirs.keys()).filter(|p| !p.ends_with(".db") && !p.ends_with(".lock")).collect();
     let mut result = vec![];
     for g in groups {
         let (mut new, mut changed, mut gone) = (0, 0, 0);

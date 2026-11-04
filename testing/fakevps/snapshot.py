@@ -70,6 +70,9 @@ for root, _dirs, files in os.walk(cfg) if os.path.isdir(cfg) else []:
     for name in files:
         p = os.path.join(root, name)
         rel = os.path.relpath(p, cfg)
+        # The mail server's own lock file comes and goes. restore.rs leaves it alone too.
+        if name.endswith(".lock"):
+            continue
         if rel.startswith("opendkim"):
             group = "dkim"
         elif rel.startswith("user-patches") or rel == "postfix-virtual.cf":

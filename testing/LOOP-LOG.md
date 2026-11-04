@@ -23,3 +23,6 @@ Short notes: what failed, why, what fixed it.
   want, so the test now expects it and checks the site really is down first.
 - T18: the menu's result line never showed. Long log lines wrapped and pushed it off the pop-up. Results now have their own space
   at the bottom, and docker-compose's warning about an old setting no longer fills the log.
+- T4, first clean pass: `check-for-changes.sh.lock` showed up as a changed mail setting. It's the mail server's own short-lived
+  lock in the settings folder. A restore could have put a stale one back and deleted a live one. Restore and Compare now leave it
+  alone, a unit test covers it, and only then did the test's fingerprint stop counting it.
