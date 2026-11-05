@@ -7,6 +7,8 @@ docker exec fakevps mkdir -p /var/cache/fakevps/src
 docker cp -q .state/src/env.tar fakevps:/var/cache/fakevps/src/minipass_env.tar
 docker cp -q .state/src/dpm.tar fakevps:/var/cache/fakevps/src/dpm.tar
 docker exec fakevps chown -R kdresdell /var/cache/fakevps/src
+docker cp -q .state/test-passwords fakevps:/var/cache/fakevps/test-passwords
+docker exec fakevps sh -c 'chown root:root /var/cache/fakevps/test-passwords; chmod 600 /var/cache/fakevps/test-passwords'
 docker cp -q fakevps/seed-inside.sh fakevps:/usr/local/sbin/fakevps-seed
 docker cp -q fakevps/reset-inside.sh fakevps:/usr/local/sbin/fakevps-reset
 docker cp -q fakevps/snapshot.py fakevps:/usr/local/sbin/fakevps-snapshot

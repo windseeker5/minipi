@@ -10,6 +10,8 @@ TOOL = HERE.parent / "mptool/target/release/mptool"
 BASE = "/home/kdresdell/minipass_env"
 RUN = STATE / "runs" / time.strftime("%Y%m%d-%H%M%S")
 DISCORD_PORT = 18925
+# The fake server's logins: random, made by build.sh, never in git.
+PW = dict(line.split() for line in (STATE / "test-passwords").read_text().splitlines())
 discord = []
 IMAP = "docker exec -i mailserver sh -c 'timeout 15 openssl s_client -quiet -connect 127.0.0.1:993 2>/dev/null'"
 
@@ -339,8 +341,8 @@ def t06():
     t.start()
     root(f"cd {BASE}/config && rm -rf postfix-accounts.cf postfix-virtual.cf user-patches opendkim; rm -rf {BASE}/maildata/minipass.me/kdc_app/home/sieve {BASE}/maildata/minipass.me/kdc_app/home/.dovecot.sieve")
     t.tool("restore", "mail", "settings", "--confirm", "RESTORE")
-    check(imap("alice@minipass.me", "alice-pass-1"), "alice can't log in")
-    check(imap("bob@minipass.me", "bob-pass-1"), "bob can't log in")
+    check(imap("alice@minipass.me", PW["alice"]), "alice can't log in")
+    check(imap("bob@minipass.me", PW["bob"]), "bob can't log in")
     check("ACTIVE" in root("docker exec mailserver doveadm sieve list -u kdc_app@minipass.me").stdout, "the forward isn't on")
     subject = "forward-check-" + os.urandom(4).hex()
     send("bob@minipass.me", "kdc_app@minipass.me", subject)
@@ -355,10 +357,10 @@ def t06():
 
 
 def t07():
-    t = Test("t07-keep-passwords", mail_check_user="bob@minipass.me", mail_check_password="bob-pass-1")
+    t = Test("t07-keep-passwords", mail_check_user="bob@minipass.me", mail_check_password=PW["bob"])
     t.start()
     # A new password today, as after a hack. The forwards get lost too.
-    new = root("docker exec mailserver doveadm pw -s SHA512-CRYPT -p alice-pass-2").stdout.strip()
+    new = root(f"docker exec mailserver doveadm pw -s SHA512-CRYPT -p {PW['alice2']}").stdout.strip()
     root(f"""sed -i 's#^alice@minipass.me|.*#alice@minipass.me|{new}#' {BASE}/config/postfix-accounts.cf; cd {BASE}/config && rm -rf postfix-virtual.cf user-patches""")
     accounts = snap()["mail/settings/accounts/postfix-accounts.cf"]
     r = t.tool("restore", "mail", "settings", "--only", "forwards", "--confirm", "RESTORE")
@@ -366,8 +368,8 @@ def t07():
     after = snap()
     check(after["mail/settings/accounts/postfix-accounts.cf"] == accounts, "the accounts file changed")
     same_under(t.before, after, "mail/settings/forwards")
-    check(imap("alice@minipass.me", "alice-pass-2"), "the new password stopped working")
-    check(not imap("alice@minipass.me", "alice-pass-1", tries=1), "the old password came back")
+    check(imap("alice@minipass.me", PW["alice2"]), "the new password stopped working")
+    check(not imap("alice@minipass.me", PW["alice"], tries=1), "the old password came back")
     t.finish(others=("mail/settings/accounts/postfix-accounts.cf", "mailstate/"), compare_may_differ=("Mail accounts",))
 
 
@@ -403,7 +405,7 @@ def t08():
     expected = sum(1 for k in after if k.startswith("mail/msg/minipass.me/alice/"))
     seen = root("docker exec mailserver doveadm -f flow mailbox status -u alice@minipass.me messages '*'").stdout
     check(sum(int(n) for n in re.findall(r"messages=(\d+)", seen)) == expected, f"Dovecot sees: {seen} expected {expected}")
-    check(imap("alice@minipass.me", "alice-pass-1"), "alice can't log in")
+    check(imap("alice@minipass.me", PW["alice"]), "alice can't log in")
     t.finish(others=("mail/msg/minipass.me/alice/", "mailstate/"), compare_may_differ=("Mail messages",))
     gone = [k for k in t.before if k.startswith("mail/msg/") and after.get(k) != t.before[k]]
     check(not gone, f"messages changed: {gone}")
@@ -421,7 +423,7 @@ def t09():
         check(not wrong, f"messages not back after {how}: {wrong}")
         check(not [k for k in after if k.endswith("+dup")], "duplicates")
         check(mail_up(), "mail isn't up")
-        check(imap("alice@minipass.me", "alice-pass-1"), "alice can't log in")
+        check(imap("alice@minipass.me", PW["alice"]), "alice can't log in")
         seen = root("docker exec mailserver doveadm -f flow mailbox status -u alice@minipass.me messages '*'").stdout
         check(sum(int(n) for n in re.findall(r"messages=(\d+)", seen)) == 5, f"Dovecot sees: {seen}")
         check("Archive" in seen, f"the Archive folder is gone: {seen}")
@@ -514,7 +516,7 @@ def t12():
         check(login_page(c), f"{c} doesn't answer")
     check(website_up(), "the website doesn't answer")
     check(mail_up(), "mail isn't up")
-    check(imap("alice@minipass.me", "alice-pass-1"), "alice can't log in")
+    check(imap("alice@minipass.me", PW["alice"]), "alice can't log in")
     check(me("stat -c %a ~/.mailpass").stdout.strip() == "600", ".mailpass is readable by others")
     subject = sh("openssl x509 -noout -subject", input=root(f"cat {BASE}/certs/kdc.minipass.me/fullchain.pem").stdout).stdout
     check("kdc.minipass.me" in subject, subject)
@@ -553,7 +555,7 @@ def t13():
     names = me("sqlite3 MinipassWebSite/customers.db 'SELECT subdomain FROM customers ORDER BY 1'").stdout.split()
     check(names == ["kdc", "testb"], f"customer list: {names}")
     check(mail_up(), "mail isn't up")
-    for user, password in (("alice", "alice-pass-1"), ("bob", "bob-pass-1"), ("kdc_app", "kdc-pass-1")):
+    for user, password in (("alice", PW["alice"]), ("bob", PW["bob"]), ("kdc_app", PW["kdc_app"])):
         check(imap(f"{user}@minipass.me", password), f"{user} can't log in")
     check("ACTIVE" in root("docker exec mailserver doveadm sieve list -u kdc_app@minipass.me").stdout, "the forward isn't on")
     check(not root("docker exec mailserver postqueue -j").stdout.strip(), "the queue isn't empty")

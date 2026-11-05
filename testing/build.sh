@@ -8,6 +8,13 @@ chmod 700 "$STATE"
 
 [ -f "$STATE/ssh/fakevps_key" ] || ssh-keygen -q -t ed25519 -N '' -C fakevps-test -f "$STATE/ssh/fakevps_key"
 
+# Made fresh here and kept out of git: the fake server's logins are random, never written in the code.
+PASSWORDS="$STATE/test-passwords"
+if [ ! -f "$PASSWORDS" ]; then
+    (umask 077; for who in alice alice2 bob kdc_app testb_app mailpass; do echo "$who $(openssl rand -hex 16)"; done > "$PASSWORDS")
+fi
+CHECK_LOGIN=$(awk '$1 == "alice" {print $2}' "$PASSWORDS")
+
 # The settings mptool uses for the fake VPS. Never the real server, and real_vps_ok stays out.
 cat > "$STATE/config.toml" <<EOT
 server = "kdresdell@127.0.0.1"
@@ -20,7 +27,7 @@ restore_enabled = true
 repo_env = "/srv/git/minipass_env.git"
 repo_app = "/srv/git/dpm.git"
 mail_check_user = "alice@minipass.me"
-mail_check_password = "alice-pass-1"
+mail_check_password = "$CHECK_LOGIN"
 ssh_options = ["-F", "/dev/null", "-i", "$STATE/ssh/fakevps_key", "-o", "IdentitiesOnly=yes", "-o", "StrictHostKeyChecking=accept-new", "-o", "UserKnownHostsFile=$STATE/ssh/known_hosts"]
 EOT
 

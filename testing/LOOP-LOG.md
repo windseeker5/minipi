@@ -32,3 +32,9 @@ Short notes: what failed, why, what fixed it.
 Commit d6643c4, each pass from a clean rebuild: 20 of 20 restore tests, 18 of 18 `cargo test` with no network, no build warnings,
 twice in a row. Whole-server restore: 68 s both times. (One "PASS 1 FAILED" line along the way was my own wrapper reading the exit
 code the bash way in zsh. That pass was 20 of 20, and pass 2 was run again with a proper exit code.)
+
+## After the finish line
+
+- GitGuardian flagged a password in commit 2d2044d: a made-up test login in `testing/build.sh`, usable only on the fake server.
+  No real secret was on GitHub (compared against the real settings files). Fake or not, it shouldn't be in a public repo. The fake
+  server's logins and app secrets are now random, made at build or seed time, and kept in `.state/`, which git ignores.

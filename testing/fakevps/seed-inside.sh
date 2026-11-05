@@ -7,6 +7,9 @@ ME=kdresdell
 DMS=ghcr.io/docker-mailserver/docker-mailserver:latest
 as_me() { sudo -u "$ME" -H "$@"; }
 log() { echo "[seed] $*"; }
+# Logins come from a file made by build.sh. Secrets the apps need are made fresh at each seed.
+pw() { awk -v who="$1" '$1 == who {print $2}' /var/cache/fakevps/test-passwords; }
+INTERNAL_SECRET=$(openssl rand -hex 16)
 
 # ── GitHub stand-in: bare repos, one commit each ──
 for repo in minipass_env dpm; do
@@ -41,7 +44,7 @@ as_me tee .env >/dev/null <<EOT
 # fake
 STRIPE_SECRET_KEY=sk_test_fake
 GOOGLE_MAPS_API_KEY=fake
-INTERNAL_API_SECRET=fake-internal
+INTERNAL_API_SECRET=$INTERNAL_SECRET
 EOT
 as_me tee mailserver.env >/dev/null <<EOT
 OVERRIDE_HOSTNAME=mail.minipass.me
@@ -62,9 +65,7 @@ PERMIT_DOCKER=connected-networks
 POSTFIX_INET_PROTOCOLS=ipv4
 DOVECOT_INET_PROTOCOLS=ipv4
 EOT
-as_me tee /home/kdresdell/.mailpass >/dev/null <<EOT
-fake-mail-password
-EOT
+pw mailpass | as_me tee /home/kdresdell/.mailpass >/dev/null
 chmod 600 /home/kdresdell/.mailpass
 as_me tee /tmp/crontab.fake >/dev/null <<EOT
 # fake crontab: does nothing
@@ -93,8 +94,8 @@ log "mail settings"
 docker image inspect "$DMS" >/dev/null 2>&1 || docker pull -q "$DMS" >/dev/null
 hash_pw() { docker run --rm --entrypoint doveadm "$DMS" pw -s SHA512-CRYPT -p "$1"; }
 : > /tmp/accounts.fake
-for pair in alice:alice-pass-1 bob:bob-pass-1 kdc_app:kdc-pass-1 testb_app:testb-pass-1; do
-    echo "${pair%%:*}@minipass.me|$(hash_pw "${pair##*:}")" >> /tmp/accounts.fake
+for who in alice bob kdc_app testb_app; do
+    echo "$who@minipass.me|$(hash_pw "$(pw "$who")")" >> /tmp/accounts.fake
 done
 as_me cp /tmp/accounts.fake config/postfix-accounts.cf; rm -f /tmp/accounts.fake
 as_me tee config/postfix-virtual.cf >/dev/null <<EOT
@@ -159,11 +160,11 @@ docker exec mailserver doveadm sieve activate -u kdc_app@minipass.me forward
 log "website"
 cd "$BASE/MinipassWebSite"
 as_me tee .env >/dev/null <<EOT
-SECRET_KEY=fake-website-secret
+SECRET_KEY=$(openssl rand -hex 16)
 STRIPE_SECRET_KEY=sk_test_fake
 STRIPE_PUBLISHABLE_KEY=pk_test_fake
 STRIPE_WEBHOOK_SECRET=fake
-INTERNAL_API_SECRET=fake-internal
+INTERNAL_API_SECRET=$INTERNAL_SECRET
 EOT
 as_me python3 -m venv venv
 as_me venv/bin/pip install -q -r requirements.txt 2>&1 | tail -2
@@ -206,7 +207,7 @@ for c in kdc testb; do
     as_me mkdir -p "$d/app/instance" "$d/app/static/uploads/avatars"
     as_me tee "$d/app/.env" >/dev/null <<EOT
 # fake
-FLASK_SECRET_KEY=fake-$c-secret
+FLASK_SECRET_KEY=$(openssl rand -hex 16)
 STRIPE_SECRET_KEY=
 GOOGLE_MAPS_API_KEY=
 GOOGLE_AI_API_KEY=
@@ -217,7 +218,7 @@ CHATBOT_ENABLE_GROQ=false
 CHATBOT_ENABLE_OLLAMA=false
 APP_SUBDOMAIN=$c
 MINIPASS_SITE_URL=http://127.0.0.1:9
-INTERNAL_API_SECRET=fake-internal
+INTERNAL_API_SECRET=$INTERNAL_SECRET
 EOT
     as_me tee "$d/docker-compose.yml" >/dev/null <<EOT
 version: '3.8'
