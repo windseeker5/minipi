@@ -44,12 +44,18 @@ impl Remote {
         opts
     }
 
+    /// The server's login shell may be zsh, which stops on a `*` that matches nothing.
+    /// Every script here is written for bash, so bash runs it.
+    fn in_bash(script: &str) -> String {
+        format!("bash -c '{}'", script.replace('\'', r"'\''"))
+    }
+
     /// Run a shell command on the server and return its output.
     pub fn run(&self, script: &str) -> Result<String> {
         let out = Command::new("ssh")
             .args(self.ssh_opts())
             .arg(&self.server)
-            .arg(script)
+            .arg(Self::in_bash(script))
             .output()
             .context("cannot start ssh")?;
         if !out.status.success() {
@@ -63,7 +69,7 @@ impl Remote {
         let mut child = Command::new("ssh")
             .args(self.ssh_opts())
             .arg(&self.server)
-            .arg(script)
+            .arg(Self::in_bash(script))
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -85,7 +91,7 @@ impl Remote {
             .args(self.ssh_opts())
             .arg("-C")
             .arg(&self.server)
-            .arg(script)
+            .arg(Self::in_bash(script))
             .stdout(Stdio::from(file))
             .stderr(Stdio::piped())
             .output()
@@ -168,5 +174,28 @@ impl Remote {
         } else {
             format!("{}/{}", self.base, remote)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Runs a script the way ssh does: handed as one string to a zsh login shell.
+    fn through_zsh(script: &str) -> std::process::Output {
+        Command::new("zsh").args(["-c", &Remote::in_bash(script)]).output().unwrap()
+    }
+
+    #[test]
+    fn a_star_that_matches_nothing_is_fine() {
+        let out = through_zsh(crate::restore::RUNNING);
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    }
+
+    #[test]
+    fn quotes_and_exit_codes_survive() {
+        let out = through_zsh(r#"a='it'"'"'s'; echo "$a $0"; exit 7"#);
+        assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "it's bash");
+        assert_eq!(out.status.code(), Some(7));
     }
 }
