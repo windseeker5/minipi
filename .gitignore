@@ -1,2 +1,9 @@
 cache/
 testing/.state/
+
+# Sensitive, stays off GitHub: Hetzner links, known weak spots
+RECOVERY.md
+RESTORE-PLAN.md
+
+# Browser logs
+.playwright-mcp/

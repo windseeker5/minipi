@@ -84,6 +84,7 @@ or the address on the little screen, e.g. `ssh 192.168.1.50`.
 | `pi/wifi.sh` | Pi | Puts the Pi on Wi-Fi, or changes the network |
 | `pi/terminal.sh` | Pi | Your terminal from the dotfiles: zsh, Neovim, lazygit, fzf, nnn... |
 | `mptool/` | | The Minipass tool (Rust): backup, monitoring, screen |
+| `RECOVERY.md` | | What to do when something breaks on the server |
 | `testing/` | | A fake VPS on the laptop, where every restore is tested |
 
 Secrets (the Discord link, server keys) never go in this repo. They live only in
